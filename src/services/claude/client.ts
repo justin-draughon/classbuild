@@ -1,22 +1,27 @@
-import Anthropic from '@anthropic-ai/sdk';
+// Ollama Cloud OpenAI-compatible API client (replaces Anthropic SDK)
 
-let clientInstance: Anthropic | null = null;
+const API_BASE = 'https://api.ollama.com/v1';
+
 let currentKey = '';
+let currentBaseUrl = API_BASE;
 
-export function getClient(apiKey: string): Anthropic {
-  if (clientInstance && currentKey === apiKey) return clientInstance;
+export function getClient(apiKey: string, baseUrl?: string): void {
   currentKey = apiKey;
-  clientInstance = new Anthropic({
-    apiKey,
-    dangerouslyAllowBrowser: true,
-  });
-  return clientInstance;
+  currentBaseUrl = baseUrl || API_BASE;
+}
+
+export function getApiKey(): string {
+  return currentKey;
+}
+
+export function getBaseUrl(): string {
+  return currentBaseUrl;
 }
 
 export const MODELS = {
-  opus: 'claude-opus-4-6',
-  sonnet: 'claude-sonnet-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
+  opus: 'kimi-k2.6',
+  sonnet: 'kimi-k2.6',
+  haiku: 'kimi-k2.6',
 } as const;
 
 export type ThinkingBudget = 'max' | 'high' | 'medium' | 'low';

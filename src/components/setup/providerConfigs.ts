@@ -14,39 +14,35 @@ export interface ProviderConfig {
 }
 
 export const CLAUDE_COST_NOTE =
-  'Pay-as-you-go \u2014 a full course typically costs around $20\u201330, depending on length.';
+  'Ollama Cloud — pay-as-you-go via Ollama credits.';
 
 export const GEMINI_COST_NOTE =
-  'Free to start \u2014 Google gives you $300 in trial credits. Covers infographics plus voice narration.';
+  'Free to start — Google gives you $300 in trial credits. Covers infographics plus voice narration.';
 
 export const CLAUDE_CONFIG: ProviderConfig = {
   id: 'claude',
-  heading: 'Connect to Claude',
-  connectedHeading: 'Connected to Claude',
+  heading: 'Connect LLM Provider',
+  connectedHeading: 'Connected to LLM',
   tagline:
-    'Claude writes your course content, quizzes, and activities. This connection is required.',
+    'Your OpenAI-compatible API key (Ollama Cloud, LiteLLM, etc.) powers all course generation. This connection is required.',
   required: true,
   costNote: CLAUDE_COST_NOTE,
-  deepLink: 'https://console.anthropic.com/settings/keys',
-  deepLinkLabel: 'Open Anthropic Console',
+  deepLink: 'https://ollama.com/blog/ollama-cloud',
+  deepLinkLabel: 'Open Ollama Cloud',
   steps: [
-    { text: 'Create a free account at console.anthropic.com' },
-    { text: 'Add at least $5 in API credits (Settings \u2192 Billing)' },
+    { text: 'Create a free account at ollama.com' },
+    { text: 'Add API credits in your account settings' },
     { text: 'Create an API key and paste it below' },
   ],
-  placeholder: 'sk-ant-...',
+  placeholder: 'sk-...',
   warnings: [
     {
-      type: 'alert',
-      text: 'A Claude Pro subscription is not the same as API access. You need API credits from the Anthropic Console.',
-    },
-    {
       type: 'info',
-      text: 'Your API key is only shown once when created \u2014 save it somewhere safe.',
+      text: 'Your API key is only shown once when created — save it somewhere safe.',
     },
   ],
   validationFailHint:
-    'Check that you copied the full key from console.anthropic.com and that your account has API credits.',
+    'Check that you copied the full key and that your account has API credits. If using a custom endpoint, ensure the URL is correct.',
 };
 
 export const GEMINI_CONFIG: ProviderConfig = {

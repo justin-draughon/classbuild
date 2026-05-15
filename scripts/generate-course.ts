@@ -11,7 +11,7 @@
  *   - --notes flag for learner notes (e.g. Australian perspective)
  *
  * Usage:
- *   ANTHROPIC_API_KEY=sk-... npx tsx scripts/generate-course.ts \
+ *   LLM_API_KEY=sk-... npx tsx scripts/generate-course.ts \
  *     --topic "The Psychology of Prejudice" \
  *     --chapters 12 \
  *     --level advanced-undergrad \
@@ -90,16 +90,17 @@ const { values } = parseArgs({
 if (!values.topic) {
   console.error('Error: --topic is required');
   console.error(
-    'Usage: ANTHROPIC_API_KEY=sk-... npx tsx scripts/generate-course.ts --topic "Your Topic" --chapters 12 --output ./output/dir'
+    'Usage: LLM_API_KEY=sk-... npx tsx scripts/generate-course.ts --topic "Your Topic" --chapters 12 --output ./output/dir'
   );
   process.exit(1);
 }
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const LLM_API_KEY = process.env.LLM_API_KEY || process.env.ANTHROPIC_API_KEY;
+const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://api.ollama.com/v1';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-if (!ANTHROPIC_API_KEY) {
-  console.error('Error: ANTHROPIC_API_KEY environment variable is required');
+if (!LLM_API_KEY) {
+  console.error('Error: LLM_API_KEY (or ANTHROPIC_API_KEY) environment variable is required');
   process.exit(1);
 }
 
@@ -329,7 +330,7 @@ async function generatePracticeQuiz(
   log(`  Ch ${prefix} Practice quiz...`);
   const quizText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       model: MODELS.opus,
       system: buildPracticeQuizPrompt(),
       messages: [{
@@ -345,7 +346,7 @@ async function generatePracticeQuiz(
   );
   console.log('');
 
-  const balancedQuiz = await balancePracticeQuiz(quizText, ANTHROPIC_API_KEY!);
+  const balancedQuiz = await balancePracticeQuiz(quizText, LLM_API_KEY!);
   await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_practice.md`), balancedQuiz);
 
   try {
@@ -366,7 +367,7 @@ async function generateInClassQuiz(
   log(`  Ch ${prefix} In-class quiz...`);
   const icqText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       model: MODELS.opus,
       system: buildInClassQuizPrompt(),
       messages: [{
@@ -383,7 +384,7 @@ async function generateInClassQuiz(
   console.log('');
 
   const parsed = parseJson(icqText) as InClassQuizQuestion[];
-  const balanced = await balanceInClassQuiz(parsed, ANTHROPIC_API_KEY!);
+  const balanced = await balanceInClassQuiz(parsed, LLM_API_KEY!);
   await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.md`), formatInClassQuizMd(balanced, ch.title));
   await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.json`), JSON.stringify(balanced, null, 2));
 
@@ -411,7 +412,7 @@ async function generateWeeklyChallenge(
 
   const challengeText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       model: MODELS.opus,
       system: buildWeeklyChallengePrompt(),
       messages: [{
@@ -453,7 +454,7 @@ async function generateDiscussion(
   log(`  Ch ${prefix} Discussion...`);
   const discText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       system: buildDiscussionPrompt(),
       messages: [{
         role: 'user',
@@ -489,7 +490,7 @@ async function generateActivities(
   log(`  Ch ${prefix} Activities...`);
   const actText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       system: buildActivitiesPrompt(),
       messages: [{
         role: 'user',
@@ -526,7 +527,7 @@ async function generateAudio(
   log(`  Ch ${prefix} Audio transcript...`);
   const transcriptText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       system: buildAudioTranscriptPrompt(),
       messages: [{
         role: 'user',
@@ -581,7 +582,7 @@ async function generateSlides(
   log(`  Ch ${prefix} Slides...`);
   const slidesText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       system: buildSlidesPrompt(),
       messages: [{
         role: 'user',
@@ -619,7 +620,7 @@ async function generateInfographic(
   // Phase 1: generate the prompt
   const promptText = await streamWithRetry(
     {
-      apiKey: ANTHROPIC_API_KEY!,
+      apiKey: LLM_API_KEY!,
       model: MODELS.opus,
       system: buildInfographicMetaPrompt(setup.themeId),
       messages: [{
@@ -683,7 +684,7 @@ async function researchChapter(ch: ChapterSyllabus, syllabus: Syllabus): Promise
   try {
     const researchText = await streamWithRetry(
       {
-        apiKey: ANTHROPIC_API_KEY!,
+        apiKey: LLM_API_KEY!,
         system: RESEARCH_SYSTEM_PROMPT,
         messages: [{
           role: 'user',
@@ -786,7 +787,7 @@ async function main() {
 
     const syllabusText = await streamWithRetry(
       {
-        apiKey: ANTHROPIC_API_KEY,
+        apiKey: LLM_API_KEY,
         model: MODELS.opus,
         system: syllabusSystem,
         messages: [{ role: 'user', content: syllabusUser }],
@@ -882,7 +883,7 @@ async function main() {
     try {
       const chapterText = await streamWithRetry(
         {
-          apiKey: ANTHROPIC_API_KEY,
+          apiKey: LLM_API_KEY,
           model: MODELS.opus,
           system: buildChapterPrompt(setup.themeId, hasGemini),
           messages: [{

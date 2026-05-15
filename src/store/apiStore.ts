@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 interface ApiState {
   claudeApiKey: string;
   geminiApiKey: string;
+  llmBaseUrl: string;
   claudeKeyValid: boolean | null;
   geminiKeyValid: boolean | null;
   isValidatingClaude: boolean;
@@ -11,6 +12,7 @@ interface ApiState {
 
   setClaudeApiKey: (key: string) => void;
   setGeminiApiKey: (key: string) => void;
+  setLlmBaseUrl: (url: string) => void;
   setClaudeKeyValid: (valid: boolean | null) => void;
   setGeminiKeyValid: (valid: boolean | null) => void;
   setIsValidatingClaude: (v: boolean) => void;
@@ -22,6 +24,7 @@ export const useApiStore = create<ApiState>()(
     (set) => ({
       claudeApiKey: '',
       geminiApiKey: '',
+      llmBaseUrl: 'https://api.ollama.com/v1',
       claudeKeyValid: null,
       geminiKeyValid: null,
       isValidatingClaude: false,
@@ -29,6 +32,7 @@ export const useApiStore = create<ApiState>()(
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key, claudeKeyValid: null }),
       setGeminiApiKey: (key) => set({ geminiApiKey: key, geminiKeyValid: null }),
+      setLlmBaseUrl: (url) => set({ llmBaseUrl: url }),
       setClaudeKeyValid: (valid) => set({ claudeKeyValid: valid }),
       setGeminiKeyValid: (valid) => set({ geminiKeyValid: valid }),
       setIsValidatingClaude: (v) => set({ isValidatingClaude: v }),
@@ -39,6 +43,7 @@ export const useApiStore = create<ApiState>()(
       partialize: (state) => ({
         claudeApiKey: state.claudeApiKey,
         geminiApiKey: state.geminiApiKey,
+        llmBaseUrl: state.llmBaseUrl,
       }),
     }
   )

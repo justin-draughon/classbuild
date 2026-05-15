@@ -1,5 +1,7 @@
-import type Anthropic from '@anthropic-ai/sdk';
-import { getClient, getThinkingTokens, MODELS, type ThinkingBudget } from './client';
+// OpenAI-compatible streaming client for Ollama Cloud (replaces Anthropic SDK)
+// Works with any OpenAI-compatible endpoint including Ollama Cloud, LiteLLM, etc.
+
+import { getBaseUrl, MODELS, type ThinkingBudget } from './client';
 
 export interface WebSearchResult {
   title: string;
@@ -17,16 +19,56 @@ export interface StreamCallbacks {
   onError?: (error: Error) => void;
 }
 
+interface MessageParam {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 export interface StreamOptions {
   apiKey: string;
   model?: string;
   system?: string;
-  messages: Anthropic.MessageParam[];
+  messages: MessageParam[];
   thinkingBudget?: ThinkingBudget;
-  // Accepts custom tools and server-side tools (web_search, etc.)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tools?: any[];
   maxTokens?: number;
+}
+
+async function* sseReader(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') continue;
+      try {
+        yield JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        // ignore malformed SSE lines
+      }
+    }
+  }
+
+  if (buffer.startsWith('data:')) {
+    const data = buffer.slice(5).trim();
+    if (data !== '[DONE]') {
+      try {
+        yield JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        // ignore
+      }
+    }
+  }
 }
 
 export async function streamMessage(
@@ -38,113 +80,62 @@ export async function streamMessage(
     model = MODELS.sonnet,
     system,
     messages,
-    thinkingBudget,
-    tools,
     maxTokens = 16000,
   } = options;
 
-  const client = getClient(apiKey);
+  const openAiMessages: Array<{ role: string; content: string }> = system
+    ? [{ role: 'system', content: system }, ...messages.map(m => ({ role: m.role, content: m.content }))]
+    : messages.map(m => ({ role: m.role, content: m.content }));
+
   let fullText = '';
 
   try {
-    const params: Anthropic.MessageCreateParams = {
-      model,
-      max_tokens: maxTokens,
-      messages,
-      stream: true,
-    };
+    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: openAiMessages,
+        max_tokens: maxTokens,
+        stream: true,
+      }),
+    });
 
-    if (system) {
-      params.system = system;
+    if (!response.ok) {
+      const errText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`HTTP ${response.status}: ${errText}`);
     }
 
-    if (thinkingBudget) {
-      params.thinking = {
-        type: 'enabled',
-        budget_tokens: getThinkingTokens(thinkingBudget),
-      };
-      params.max_tokens = Math.max(maxTokens, getThinkingTokens(thinkingBudget) + maxTokens);
+    if (!response.body) {
+      throw new Error('No response body');
     }
 
-    if (tools && tools.length > 0) {
-      params.tools = tools;
-    }
+    const reader = response.body.getReader();
 
-    const stream = await client.messages.stream(params);
+    try {
+      for await (const parsed of sseReader(reader)) {
+        const choices = parsed.choices as Array<Record<string, unknown>> | undefined;
+        if (!choices || choices.length === 0) continue;
 
-    // Track server tool use blocks to capture search queries from deltas
-    const serverToolInputs = new Map<number, string>();
+        const delta = choices[0]?.delta as Record<string, unknown> | undefined;
+        if (!delta) continue;
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_start') {
-        const block = event.content_block;
-        if (block.type === 'server_tool_use') {
-          // Server-side tool use (e.g., web_search)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const input = (block as any).input;
-          if (input?.query) {
-            callbacks.onWebSearch?.(input.query);
-          } else {
-            // Input might stream via deltas
-            serverToolInputs.set(event.index, '');
-          }
-        } else if (block.type === 'web_search_tool_result') {
-          // Web search results returned from server
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const content = (block as any).content;
-          if (Array.isArray(content)) {
-            const results: WebSearchResult[] = content
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .filter((r: any) => r.type === 'web_search_result')
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((r: any) => ({
-                title: r.title || '',
-                url: r.url || '',
-                pageAge: r.page_age,
-              }));
-            if (results.length > 0) {
-              callbacks.onWebSearchResults?.(results);
-            }
-          }
-        } else if (block.type === 'tool_use') {
-          callbacks.onToolUse?.(block.name, {} as Record<string, unknown>);
+        const text = delta.content as string | undefined;
+        if (text) {
+          fullText += text;
+          callbacks.onText?.(text);
         }
-      } else if (event.type === 'content_block_delta') {
-        const delta = event.delta;
-        if ('text' in delta && delta.text) {
-          fullText += delta.text;
-          callbacks.onText?.(delta.text);
-        } else if ('thinking' in delta && delta.thinking) {
-          callbacks.onThinking?.(delta.thinking);
-        } else if ('partial_json' in delta) {
-          // Accumulate server tool input from deltas
-          const existing = serverToolInputs.get(event.index);
-          if (existing !== undefined) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            serverToolInputs.set(event.index, existing + (delta as any).partial_json);
-          }
-        }
-      } else if (event.type === 'content_block_stop') {
-        // Check for accumulated server tool input
-        const accumulatedInput = serverToolInputs.get(event.index);
-        if (accumulatedInput) {
-          try {
-            const parsed = JSON.parse(accumulatedInput);
-            if (parsed.query) {
-              callbacks.onWebSearch?.(parsed.query);
-            }
-          } catch { /* partial JSON, ignore */ }
-          serverToolInputs.delete(event.index);
+
+        const reasoning = delta.reasoning_content as string | undefined;
+        if (reasoning) {
+          callbacks.onThinking?.(reasoning);
         }
       }
-    }
-
-    // Process final message for complete tool use blocks
-    const finalMessage = await stream.finalMessage();
-    for (const block of finalMessage.content) {
-      if (block.type === 'tool_use') {
-        callbacks.onToolUse?.(block.name, block.input as Record<string, unknown>);
-      }
+    } finally {
+      reader.releaseLock();
     }
 
     callbacks.onDone?.(fullText);
@@ -177,43 +168,13 @@ export async function streamWithRetry(
   throw new Error('Max retries exceeded');
 }
 
-// Non-streaming version for simpler calls
+// Non-streaming stub — kept for backward compatibility with any lingering imports
 export async function sendMessage(
   options: Omit<StreamOptions, 'maxTokens'> & { maxTokens?: number }
-): Promise<Anthropic.Message> {
-  const {
-    apiKey,
-    model = MODELS.sonnet,
-    system,
-    messages,
-    thinkingBudget,
-    tools,
-    maxTokens = 16000,
-  } = options;
-
-  const client = getClient(apiKey);
-
-  const params: Anthropic.MessageCreateParams = {
-    model,
-    max_tokens: maxTokens,
-    messages,
-  };
-
-  if (system) {
-    params.system = system;
-  }
-
-  if (thinkingBudget) {
-    params.thinking = {
-      type: 'enabled',
-      budget_tokens: getThinkingTokens(thinkingBudget),
-    };
-    params.max_tokens = Math.max(maxTokens, getThinkingTokens(thinkingBudget) + maxTokens);
-  }
-
-  if (tools && tools.length > 0) {
-    params.tools = tools;
-  }
-
-  return client.messages.create(params);
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  const fullText = await streamMessage(
+    { ...options, maxTokens: options.maxTokens ?? 16000 },
+    {}
+  );
+  return { content: [{ type: 'text', text: fullText }] };
 }

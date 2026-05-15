@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useApiStore } from '../../store/apiStore';
-import { MODELS } from '../../services/claude/client';
+import { getClient, MODELS } from '../../services/claude/client';
 import { ProviderCard } from './ProviderCard';
 import { CLAUDE_CONFIG, GEMINI_CONFIG } from './providerConfigs';
 
 export function ApiKeyPanel() {
   const {
-    claudeApiKey, geminiApiKey,
+    claudeApiKey, geminiApiKey, llmBaseUrl,
     claudeKeyValid, geminiKeyValid,
     isValidatingClaude, isValidatingGemini,
-    setClaudeApiKey, setGeminiApiKey,
+    setClaudeApiKey, setGeminiApiKey, setLlmBaseUrl,
     setClaudeKeyValid, setGeminiKeyValid,
     setIsValidatingClaude, setIsValidatingGemini,
   } = useApiStore();
@@ -18,23 +18,26 @@ export function ApiKeyPanel() {
     if (!claudeApiKey.trim()) return;
     setIsValidatingClaude(true);
     try {
-      const { default: Anthropic } = await import('@anthropic-ai/sdk');
-      const client = new Anthropic({
-        apiKey: claudeApiKey.trim(),
-        dangerouslyAllowBrowser: true,
+      getClient(claudeApiKey.trim(), llmBaseUrl);
+      const response = await fetch(`${llmBaseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${claudeApiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: MODELS.haiku,
+          messages: [{ role: 'user', content: 'Hi' }],
+          max_tokens: 10,
+        }),
       });
-      await client.messages.create({
-        model: MODELS.haiku,
-        max_tokens: 10,
-        messages: [{ role: 'user', content: 'Hi' }],
-      });
-      setClaudeKeyValid(true);
+      setClaudeKeyValid(response.ok);
     } catch {
       setClaudeKeyValid(false);
     } finally {
       setIsValidatingClaude(false);
     }
-  }, [claudeApiKey, setClaudeKeyValid, setIsValidatingClaude]);
+  }, [claudeApiKey, llmBaseUrl, setClaudeKeyValid, setIsValidatingClaude]);
 
   const validateGemini = useCallback(async () => {
     if (!geminiApiKey.trim()) return;
@@ -75,6 +78,19 @@ export function ApiKeyPanel() {
             ClassBuild has no server and no accounts. Everything happens right here in your browser — we never see, store, or have access to your keys.
           </p>
         </div>
+      </div>
+      <div className="space-y-3">
+        <label className="text-xs text-text-muted">LLM Base URL (optional)</label>
+        <input
+          type="text"
+          value={llmBaseUrl}
+          onChange={(e) => setLlmBaseUrl(e.target.value)}
+          placeholder="https://api.ollama.com/v1"
+          className="w-full px-3 py-2 rounded-lg bg-bg-elevated border border-violet-500/15 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-violet-500/40 transition-colors"
+        />
+        <p className="text-[11px] text-text-muted/70">
+          For Ollama Cloud, leave as default. For LiteLLM or other OpenAI-compatible proxies, enter the base URL.
+        </p>
       </div>
       <ProviderCard
         config={CLAUDE_CONFIG}

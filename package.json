@@ -33,7 +33,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.74.0",
     "@tailwindcss/vite": "^4.1.18",
     "docx": "^9.5.1",
     "dompurify": "^3.3.1",
