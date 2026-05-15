@@ -24,7 +24,7 @@ export const useApiStore = create<ApiState>()(
     (set) => ({
       claudeApiKey: '',
       geminiApiKey: '',
-      llmBaseUrl: 'https://api.ollama.com/v1',
+      llmBaseUrl: 'https://ollama.com/v1',
       claudeKeyValid: null,
       geminiKeyValid: null,
       isValidatingClaude: false,

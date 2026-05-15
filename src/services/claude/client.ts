@@ -1,6 +1,6 @@
 // Ollama Cloud OpenAI-compatible API client (replaces Anthropic SDK)
 
-const API_BASE = 'https://api.ollama.com/v1';
+const API_BASE = 'https://ollama.com/v1';
 
 let currentKey = '';
 let currentBaseUrl = API_BASE;

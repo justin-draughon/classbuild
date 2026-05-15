@@ -85,7 +85,7 @@ export function ApiKeyPanel() {
           type="text"
           value={llmBaseUrl}
           onChange={(e) => setLlmBaseUrl(e.target.value)}
-          placeholder="https://api.ollama.com/v1"
+          placeholder="https://ollama.com/v1"
           className="w-full px-3 py-2 rounded-lg bg-bg-elevated border border-violet-500/15 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-violet-500/40 transition-colors"
         />
         <p className="text-[11px] text-text-muted/70">
