@@ -1,13 +1,17 @@
-import type { ResearchSource, ResearchDossier } from '../types/course';
+import type { ResearchSource, ResearchDossier, SearchResult } from '../types/course';
 
-export const RESEARCH_SYSTEM_PROMPT = `You are a research assistant building a research dossier for a university course chapter. Your job is to find real, verifiable academic sources using web search.
+export const RESEARCH_SYSTEM_PROMPT = `You are a research assistant building a research dossier for a university course chapter. Your job is to find real, verifiable academic sources and synthesize them into a structured dossier.
 
-PROCESS:
-1. Search for key academic sources related to the chapter topic
-2. Search for seminal papers, textbooks, and authoritative reviews
-3. Synthesize findings into a structured dossier
+You will be given:
+- The chapter topic, narrative, and key concepts
+- A set of real web search results (titles, URLs, snippets) that have been pre-fetched for you
 
-After completing your research, output your dossier as JSON:
+YOUR TASK:
+1. Analyze the provided search results
+2. Identify 5-8 high-quality academic sources (peer-reviewed papers, seminal textbooks, authoritative reviews)
+3. Build a structured dossier as JSON output
+
+OUTPUT FORMAT (ONLY JSON):
 {
   "sources": [
     {
@@ -24,16 +28,36 @@ After completing your research, output your dossier as JSON:
   "synthesisNotes": "How these sources collectively inform the chapter content and key pedagogical takeaways"
 }
 
-Find 5-8 high-quality sources per chapter. Prefer peer-reviewed journal articles, seminal textbooks, and authoritative reviews. Output ONLY the JSON dossier.`;
+RULES:
+- Use ONLY sources that appear in the provided search results
+- Verify URLs are valid and match the source described
+- If a DOI is not provided, leave it blank (do not hallucinate one)
+- For any source you're unsure about, set isVerified: false
+- If fewer than 5 real academic sources are found, note that in synthesisNotes
+- Output ONLY valid JSON — no markdown wrappers, no preamble, no commentary`;
 
-export function buildResearchUserPrompt(chapterTitle: string, chapterNarrative: string, keyConcepts: string[]) {
+export function buildResearchUserPrompt(
+  chapterTitle: string,
+  chapterNarrative: string,
+  keyConcepts: string[],
+  searchResults: SearchResult[]
+): string {
+  const searchBlock = searchResults.length === 0
+    ? 'No web search results were found. Please work from your training knowledge and clearly note which sources cannot be verified.'
+    : searchResults.map((r, i) =>
+        `[${i + 1}] ${r.title}\nURL: ${r.url}\nSnippet: ${r.snippet}`
+      ).join('\n\n');
+
   return `Research the following chapter topic and build a dossier of real academic sources.
 
 **Chapter**: "${chapterTitle}"
 **Description**: ${chapterNarrative}
 **Key concepts**: ${keyConcepts.join(', ')}
 
-Search for real academic sources. Find 5-8 high-quality references.`;
+**SEARCH RESULTS** (use ONLY these for URLs and titles):
+${searchBlock}
+
+Build a JSON dossier using the sources above. DO NOT hallucinate URLs or DOIs.`;
 }
 
 export function parseResearchResponse(text: string, chapterNumber: number): ResearchDossier | null {
@@ -42,7 +66,6 @@ export function parseResearchResponse(text: string, chapterNumber: number): Rese
     const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (codeBlockMatch) jsonStr = codeBlockMatch[1];
 
-    // Try to extract JSON object from text
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1) jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);

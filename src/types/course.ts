@@ -83,6 +83,12 @@ export interface ResearchDossier {
   synthesisNotes: string;
 }
 
+export interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 export interface InClassQuizQuestion {
   question: string;
   correctAnswer: string;

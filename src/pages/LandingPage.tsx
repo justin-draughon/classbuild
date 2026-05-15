@@ -467,7 +467,7 @@ export function LandingPage() {
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-sm mb-8">
             <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-            Anthropic Hackathon 2026
+            AI Course Generator
           </div>
 
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4">
@@ -674,7 +674,7 @@ export function LandingPage() {
         >
           <h2 className="text-3xl font-bold mb-4">Five stages. One click at a time.</h2>
           <p className="text-text-secondary max-w-lg mx-auto">
-            A full 12-chapter course takes about 2 hours to build and costs around $20–30 in Claude credits. Audiobook narration and infographics are included — covered by Google's free $300 Gemini trial.
+            A full 12-chapter course takes about 2 hours to build and costs around $20–30 in API credits. Audiobook narration and infographics are included — covered by Google's free $300 Gemini trial.
           </p>
         </motion.div>
 
@@ -753,7 +753,7 @@ export function LandingPage() {
         <div className="flex items-center justify-center gap-3 mb-4">
           <span className="text-text-muted text-xs">Powered by</span>
           {[
-            { label: 'Claude', sub: 'Anthropic', color: '#8b5cf6' },
+            { label: 'Kimi', sub: 'Ollama Cloud', color: '#8b5cf6' },
             { label: 'Gemini', sub: 'Google', color: '#3b82f6' },
           ].map((b) => (
             <span
@@ -773,7 +773,7 @@ export function LandingPage() {
           Your API keys never leave your browser. No backend, no tracking, no accounts.
         </p>
         <p className="text-text-muted/50 text-xs">
-          ClassBuild — Anthropic Hackathon, Feb 10-17, 2026
+          ClassBuild — AI Course Generator
         </p>
       </footer>
     </div>

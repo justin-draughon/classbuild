@@ -157,7 +157,7 @@ export function SetupPage() {
               <span className="text-text-muted shrink-0">Services:</span>
               <span className="text-text-secondary flex items-center gap-1.5 flex-wrap">
                 <span className={claudeKeyValid === true ? 'text-emerald-400' : claudeApiKey ? 'text-amber-400' : 'text-text-muted'}>
-                  Claude {claudeKeyValid === true ? '✓' : claudeApiKey ? '?' : '✗'}
+                  LLM {claudeKeyValid === true ? '✓' : claudeApiKey ? '?' : '✗'}
                 </span>
                 {' · '}
                 <span className={geminiKeyValid === true ? 'text-emerald-400' : geminiApiKey ? 'text-amber-400' : 'text-text-muted'}>
@@ -169,11 +169,7 @@ export function SetupPage() {
 
           {claudeKeyValid === false && (
             <div className="mb-4 p-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
-              Your Claude connection didn't work. Check that you copied the full key from{' '}
-              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="underline hover:text-error/80">
-                console.anthropic.com
-              </a>{' '}
-              and that your account has API credits.
+              Your LLM connection didn't work. Check that you copied the full key and that your account has API credits.
             </div>
           )}
 
@@ -192,9 +188,9 @@ export function SetupPage() {
 
           {!canProceed && (
             <p className="text-xs text-text-muted text-center mt-3">
-              {!hasTopic && !hasApiKey ? 'Enter a course topic and add your Anthropic API key to continue' :
+               {!hasTopic && !hasApiKey ? 'Enter a course topic and add your API key to continue' :
                !hasTopic ? (setup.topic.trim().length === 0 ? 'Enter a course topic to continue' : 'Please provide a more detailed topic description') :
-               'Add your Anthropic API key to continue'}
+               'Add your API key to continue'}
             </p>
           )}
         </motion.div>

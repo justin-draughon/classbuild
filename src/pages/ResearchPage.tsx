@@ -5,24 +5,41 @@ import { useCourseStore } from '../store/courseStore';
 import { useApiStore } from '../store/apiStore';
 import { useUiStore } from '../store/uiStore';
 import { streamWithRetry } from '../services/claude/streaming';
-import type { WebSearchResult } from '../services/claude/streaming';
 import { Button } from '../components/shared/Button';
-import type { ResearchDossier } from '../types/course';
+import type { ResearchDossier, SearchResult } from '../types/course';
+import { RESEARCH_SYSTEM_PROMPT, buildResearchUserPrompt, parseResearchResponse } from '../prompts/research';
 import { validateDois } from '../utils/doiValidator';
 import { isSafeHttpUrl } from '../utils/url';
 import { friendlyError } from '../utils/errors';
-import { RESEARCH_SYSTEM_PROMPT, buildResearchUserPrompt, parseResearchResponse } from '../prompts/research';
 
-type ResearchPhase = 'idle' | 'thinking' | 'searching' | 'compiling' | 'validating';
+type ResearchPhase = 'idle' | 'searching' | 'thinking' | 'compiling' | 'validating';
 
 interface ChapterResearchState {
   phase: ResearchPhase;
   searchQueries: string[];
-  webResults: WebSearchResult[];
+  webResults: SearchResult[];
   synthesisText: string;
   doiResults: { valid: number; invalid: number } | null;
-  latestSource: WebSearchResult | null;
+  latestSource: SearchResult | null;
   error: string;
+}
+
+async function fetchSearchResults(query: string): Promise<SearchResult[]> {
+  const response = await fetch('/api/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Search API ${response.status}: ${text}`);
+  }
+  const data = await response.json();
+  return (data.results || []).map((r: SearchResult) => ({
+    title: r.title || 'Untitled',
+    url: r.url || '',
+    snippet: r.snippet || '',
+  }));
 }
 
 const emptyResearchState: ChapterResearchState = {
@@ -64,48 +81,36 @@ export function ResearchPage() {
     if (researchDossiers.some(d => d.chapterNumber === chapterNum)) return;
 
     setResearchingSet(prev => new Set(prev).add(chapterNum));
-    updateChapterState(chapterNum, () => ({ ...emptyResearchState, phase: 'thinking' }));
+    updateChapterState(chapterNum, () => ({ ...emptyResearchState, phase: 'searching' }));
 
-    // Track web results locally for fallback dossier
-    let localWebResults: WebSearchResult[] = [];
+    let searchResults: SearchResult[] = [];
+    let localWebResults: SearchResult[] = [];
 
     try {
+      // Step 1: External search
+      const query = `academic research ${chapter.title} ${chapter.keyConcepts.join(' ')}`;
+      updateChapterState(chapterNum, s => ({ ...s, searchQueries: [query], phase: 'searching' }));
+      searchResults = await fetchSearchResults(query);
+      localWebResults = [...searchResults];
+      updateChapterState(chapterNum, s => ({ ...s, webResults: searchResults, phase: 'thinking' }));
+
+      // Step 2: Synthesize with LLM
       const fullText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
           system: RESEARCH_SYSTEM_PROMPT,
           messages: [{
             role: 'user',
-            content: buildResearchUserPrompt(chapter.title, chapter.narrative, chapter.keyConcepts),
+            content: buildResearchUserPrompt(chapter.title, chapter.narrative, chapter.keyConcepts, searchResults),
           }],
-          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
           maxTokens: 16000,
         },
         {
-          onThinking: () => updateChapterState(chapterNum, s => ({ ...s, phase: 'thinking' })),
           onText: (text) => updateChapterState(chapterNum, s => ({
             ...s,
             phase: 'compiling',
             synthesisText: s.synthesisText + text,
           })),
-          onWebSearch: (query) => updateChapterState(chapterNum, s => ({
-            ...s,
-            phase: 'searching',
-            searchQueries: [...s.searchQueries, query],
-          })),
-          onWebSearchResults: (results) => {
-            updateChapterState(chapterNum, s => {
-              const newResults = results.filter(
-                r => !s.webResults.some(existing => existing.url === r.url)
-              );
-              localWebResults = [...s.webResults, ...newResults];
-              return {
-                ...s,
-                webResults: localWebResults,
-                latestSource: newResults.length > 0 ? newResults[newResults.length - 1] : s.latestSource,
-              };
-            });
-          },
           onError: (err) => updateChapterState(chapterNum, s => ({ ...s, error: err.message })),
         }
       );
@@ -119,11 +124,11 @@ export function ResearchPage() {
             authors: '',
             year: '',
             url: r.url,
-            summary: '',
-            relevance: '',
-            isVerified: true,
+            summary: r.snippet,
+            relevance: 'Found via web search',
+            isVerified: false,
           })),
-          synthesisNotes: fullText.slice(0, 500),
+          synthesisNotes: fullText.slice(0, 500) || 'Synthesized from web search results.',
         };
       }
 
@@ -158,14 +163,21 @@ export function ResearchPage() {
       const message = friendlyError(err, 'Research failed.');
       updateChapterState(chapterNum, s => ({ ...s, error: message }));
 
-      if (message.includes('web_search') || message.includes('tool')) {
-        const fallbackDossier: ResearchDossier = {
-          chapterNumber: chapterNum,
-          sources: [],
-          synthesisNotes: 'Web search unavailable. Chapter will be generated from model knowledge. Citations should be independently verified.',
-        };
-        addResearchDossier(fallbackDossier);
-      }
+      // Always save a fallback dossier, even on failure
+      const fallbackDossier: ResearchDossier = {
+        chapterNumber: chapterNum,
+        sources: localWebResults.filter(r => isSafeHttpUrl(r.url)).map(r => ({
+          title: r.title,
+          authors: '',
+          year: '',
+          url: r.url,
+          summary: r.snippet,
+          relevance: '',
+          isVerified: false,
+        })),
+        synthesisNotes: 'Research encountered errors. Sources should be independently verified.',
+      };
+      addResearchDossier(fallbackDossier);
     } finally {
       setResearchingSet(prev => {
         const next = new Set(prev);
@@ -308,12 +320,10 @@ export function ResearchPage() {
         </div>
       </div>
 
+      {/* Error display */}
       {chapterError && (
         <div className="mb-6 p-4 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
           {chapterError}
-          {chapterError.includes('web_search') && (
-            <p className="mt-2 text-text-muted">Falling back to AI-generated research. Sources should be independently verified.</p>
-          )}
         </div>
       )}
 
