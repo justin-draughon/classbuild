@@ -133,6 +133,11 @@ export async function streamMessage(
         const reasoning = delta.reasoning_content as string | undefined;
         if (reasoning) {
           callbacks.onThinking?.(reasoning);
+          // kimi-k2.6 sends output in reasoning, not content — treat it as text too
+          if (!text) {
+            fullText += reasoning;
+            callbacks.onText?.(reasoning);
+          }
         }
       }
     } finally {
