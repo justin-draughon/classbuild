@@ -5,7 +5,7 @@ import { useCourseStore } from '../store/courseStore';
 import { useApiStore } from '../store/apiStore';
 import { useUiStore } from '../store/uiStore';
 import { streamMessage, streamWithRetry } from '../services/claude/streaming';
-import { MODELS } from '../services/claude/client';
+import { resolveModel } from '../services/claude/client';
 import { buildChapterPrompt, buildChapterUserPrompt } from '../prompts/chapter';
 import { buildPracticeQuizPrompt, buildPracticeQuizUserPrompt } from '../prompts/practiceQuiz';
 import { buildDiscussionPrompt, buildDiscussionUserPrompt } from '../prompts/discussion';
@@ -327,7 +327,7 @@ export function BuildPage() {
       const fullText = await streamMessage(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildChapterPrompt(setup.themeId, hasGemini),
           messages: [{
             role: 'user',
@@ -407,7 +407,7 @@ export function BuildPage() {
       const fullText = await streamMessage(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildChapterPrompt(setup.themeId, hasGemini),
           messages: [
             {
@@ -463,7 +463,7 @@ export function BuildPage() {
       const fullText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildPracticeQuizPrompt(),
           messages: [{
             role: 'user',
@@ -517,7 +517,7 @@ export function BuildPage() {
       const fullText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildInClassQuizPrompt(),
           messages: [{
             role: 'user',
@@ -562,7 +562,7 @@ export function BuildPage() {
       const fullText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildWeeklyChallengePrompt(),
           messages: [{
             role: 'user',
@@ -690,7 +690,7 @@ export function BuildPage() {
       const fullText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
-          model: MODELS.haiku,
+          model: resolveModel('haiku'),
           system: buildActivityDetailPrompt(),
           messages: [{
             role: 'user',
@@ -850,7 +850,7 @@ export function BuildPage() {
       const promptText = await streamWithRetry(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildInfographicMetaPrompt(setup.themeId),
           messages: [{
             role: 'user',
@@ -923,7 +923,7 @@ export function BuildPage() {
         const fullText = await streamMessage(
           {
             apiKey: claudeApiKey,
-            model: MODELS.opus,
+            model: resolveModel('opus'),
             system: buildChapterPrompt(setup.themeId, hasGemini),
             messages: [{
               role: 'user',
@@ -954,7 +954,7 @@ export function BuildPage() {
           const quizText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildPracticeQuizPrompt(),
               messages: [{
                 role: 'user',
@@ -977,7 +977,7 @@ export function BuildPage() {
           const inClassText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildInClassQuizPrompt(),
               messages: [{
                 role: 'user',
@@ -1010,7 +1010,7 @@ export function BuildPage() {
           const challengeText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildWeeklyChallengePrompt(),
               messages: [{
                 role: 'user',
@@ -1075,7 +1075,7 @@ export function BuildPage() {
           const fullText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildChapterPrompt(setup.themeId, hasGemini),
               messages: [{
                 role: 'user',
@@ -1117,7 +1117,7 @@ export function BuildPage() {
           const quizText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildPracticeQuizPrompt(),
               messages: [{
                 role: 'user',
@@ -1145,7 +1145,7 @@ export function BuildPage() {
           const inClassText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildInClassQuizPrompt(),
               messages: [{
                 role: 'user',
@@ -1184,7 +1184,7 @@ export function BuildPage() {
           const challengeText = await streamMessage(
             {
               apiKey: claudeApiKey,
-              model: MODELS.opus,
+              model: resolveModel('opus'),
               system: buildWeeklyChallengePrompt(),
               messages: [{
                 role: 'user',
@@ -1324,7 +1324,7 @@ export function BuildPage() {
             const promptText = await streamWithRetry(
               {
                 apiKey: claudeApiKey,
-                model: MODELS.opus,
+                model: resolveModel('opus'),
                 system: buildInfographicMetaPrompt(setup.themeId),
                 messages: [{
                   role: 'user',

@@ -1,6 +1,7 @@
+import { extractJson } from '../../utils/jsonExtract';
 import type { InClassQuizQuestion } from '../../types/course';
 import { streamMessage } from '../claude/streaming';
-import { MODELS } from '../claude/client';
+import { resolveModel } from '../claude/client';
 
 // ---------- Practice Quiz Parsing ----------
 
@@ -115,7 +116,6 @@ Output format (same structure, only distractors changed):
   {
     "id": 3,
     "distractors": ["Elaborated wrong 1 with more detail", "Wrong 2", "Elaborated wrong 3"]
-  }
 ]`;
 
 interface RewriteInput {
@@ -137,7 +137,7 @@ async function requestRewrites(
   const fullText = await streamMessage(
     {
       apiKey,
-      model: MODELS.haiku,
+      model: resolveModel('haiku'),
       system: REWRITE_SYSTEM,
       messages: [{ role: 'user', content: JSON.stringify(questions, null, 2) }],
       thinkingBudget: 'low',
@@ -146,13 +146,8 @@ async function requestRewrites(
     {} // no streaming callbacks needed
   );
 
-  // Parse the JSON response
-  let jsonStr = fullText;
-  const match = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (match) jsonStr = match[1];
-  const first = jsonStr.indexOf('[');
-  const last = jsonStr.lastIndexOf(']');
-  if (first !== -1 && last !== -1) jsonStr = jsonStr.slice(first, last + 1);
+  const jsonStr = extractJson(fullText);
+  if (!jsonStr) throw new Error('No valid JSON found in rewrite response');
 
   return JSON.parse(jsonStr) as RewriteOutput[];
 }

@@ -5,7 +5,7 @@ import { useCourseStore } from '../store/courseStore';
 import { useApiStore } from '../store/apiStore';
 import { useUiStore } from '../store/uiStore';
 import { streamMessage } from '../services/claude/streaming';
-import { MODELS } from '../services/claude/client';
+import { resolveModel } from '../services/claude/client';
 import { buildSyllabusPrompt, parseSyllabusResponse, parsePartialChapters } from '../prompts/syllabus';
 import { Button } from '../components/shared/Button';
 import { SyllabusTimeline } from '../components/syllabus/SyllabusTimeline';
@@ -61,7 +61,7 @@ export function SyllabusPage() {
       const fullText = await streamMessage(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: systemPrompt,
           messages,
           thinkingBudget: feedbackText ? 'high' : 'max',

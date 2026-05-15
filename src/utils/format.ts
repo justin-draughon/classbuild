@@ -1,3 +1,5 @@
+import { extractJson, repairJson } from './jsonExtract';
+
 /**
  * String helpers shared between the web app (BuildPage) and the headless CLI
  * (scripts/generate-course.ts). Kept deliberately small and side-effect-free
@@ -30,24 +32,20 @@ export function extractHtml(text: string): string {
 }
 
 /**
- * Parse JSON from a Claude response. Tolerates:
+ * Parse JSON from an LLM response. Tolerates:
  *  - ```json fences
- *  - leading / trailing prose around the object or array
+ *  - leading / trailing prose or thinking text containing stray braces
  *  - trailing commas
  *  - occasional unescaped quotes inside strings (up to 10 repair attempts)
+ *  - single-quoted strings, unquoted keys, comments (via repairJson)
  *
- * `wrapType` selects whether we expect an array ('[') or object ('{').
+ * `wrapType` is legacy; `extractJson` now auto-detects objects vs arrays.
  */
-export function parseJson(text: string, wrapType: '[' | '{' = '['): unknown {
-  let jsonStr = text;
-  const match = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (match) jsonStr = match[1];
-  const open = wrapType;
-  const close = wrapType === '[' ? ']' : '}';
-  const first = jsonStr.indexOf(open);
-  const last = jsonStr.lastIndexOf(close);
-  if (first !== -1 && last !== -1) jsonStr = jsonStr.slice(first, last + 1);
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+export function parseJson(text: string, _wrapType?: '[' | '{'): unknown {
+  let jsonStr = extractJson(text);
+  if (!jsonStr) {
+    throw new SyntaxError('No valid JSON found in response');
+  }
 
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
@@ -57,14 +55,20 @@ export function parseJson(text: string, wrapType: '[' | '{' = '['): unknown {
         const posMatch = e.message.match(/position (\d+)/);
         if (posMatch) {
           const pos = parseInt(posMatch[1]);
-          if (pos > 0 && pos < jsonStr.length && jsonStr[pos] === '"') {
+          if (pos >= 0 && pos < jsonStr.length && jsonStr[pos] === '"') {
             jsonStr = jsonStr.slice(0, pos) + '\\"' + jsonStr.slice(pos + 1);
             continue;
           }
         }
       }
+      // Try aggressive repair on first failure, then give up
+      if (attempt === 0) {
+        jsonStr = repairJson(jsonStr);
+        continue;
+      }
       throw e;
     }
   }
-  return JSON.parse(jsonStr);
+
+  throw new SyntaxError('Failed to parse JSON after 10 attempts');
 }

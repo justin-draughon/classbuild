@@ -1,3 +1,4 @@
+import { extractJson, repairJson } from '../utils/jsonExtract';
 import type { Syllabus, CurriculumMap, BloomLevel, AlignmentLevel, LearningObjective } from '../types/course';
 
 export function buildLearningObjectivesPrompt(): string {
@@ -54,21 +55,16 @@ const VALID_ALIGNMENT_LEVELS = new Set<AlignmentLevel>(['introduced', 'developed
 
 export function parseCurriculumMapResponse(text: string): CurriculumMap | null {
   try {
-    // Strip code fences
-    let json = text;
-    const codeMatch = json.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeMatch) json = codeMatch[1];
+    const jsonStr = extractJson(text);
+    if (!jsonStr) return null;
 
-    // Find JSON object boundaries
-    const firstBrace = json.indexOf('{');
-    const lastBrace = json.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace === -1) return null;
-    json = json.slice(firstBrace, lastBrace + 1);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonStr) as Record<string, unknown>;
+    } catch {
+      parsed = JSON.parse(repairJson(jsonStr)) as Record<string, unknown>;
+    }
 
-    // Clean trailing commas
-    json = json.replace(/,\s*([}\]])/g, '$1');
-
-    const parsed = JSON.parse(json);
     if (!parsed.objectives || !Array.isArray(parsed.objectives)) return null;
 
     const objectives: LearningObjective[] = [];

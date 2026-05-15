@@ -25,7 +25,7 @@ import { parseArgs, promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
 import { streamWithRetry } from '../src/services/claude/streaming';
-import { MODELS } from '../src/services/claude/client';
+import { resolveModel } from '../src/services/claude/client';
 import { buildSyllabusPrompt, parseSyllabusResponse } from '../src/prompts/syllabus';
 import { buildChapterPrompt, buildChapterUserPrompt } from '../src/prompts/chapter';
 import { replaceGeminiImagePlaceholdersNode } from './lib/node-image-placer';
@@ -331,7 +331,7 @@ async function generatePracticeQuiz(
   const quizText = await streamWithRetry(
     {
       apiKey: LLM_API_KEY!,
-      model: MODELS.opus,
+      model: resolveModel('opus'),
       system: buildPracticeQuizPrompt(),
       messages: [{
         role: 'user',
@@ -368,7 +368,7 @@ async function generateInClassQuiz(
   const icqText = await streamWithRetry(
     {
       apiKey: LLM_API_KEY!,
-      model: MODELS.opus,
+      model: resolveModel('opus'),
       system: buildInClassQuizPrompt(),
       messages: [{
         role: 'user',
@@ -413,7 +413,7 @@ async function generateWeeklyChallenge(
   const challengeText = await streamWithRetry(
     {
       apiKey: LLM_API_KEY!,
-      model: MODELS.opus,
+      model: resolveModel('opus'),
       system: buildWeeklyChallengePrompt(),
       messages: [{
         role: 'user',
@@ -621,7 +621,7 @@ async function generateInfographic(
   const promptText = await streamWithRetry(
     {
       apiKey: LLM_API_KEY!,
-      model: MODELS.opus,
+      model: resolveModel('opus'),
       system: buildInfographicMetaPrompt(setup.themeId),
       messages: [{
         role: 'user',
@@ -685,6 +685,7 @@ async function researchChapter(ch: ChapterSyllabus, syllabus: Syllabus): Promise
     const researchText = await streamWithRetry(
       {
         apiKey: LLM_API_KEY!,
+        model: resolveModel('opus'),
         system: RESEARCH_SYSTEM_PROMPT,
         messages: [{
           role: 'user',
@@ -764,7 +765,7 @@ async function researchChapter(ch: ChapterSyllabus, syllabus: Syllabus): Promise
 async function main() {
   log(`ClassBuild CLI v2 — "${setup.topic}" (${setup.numChapters} chapters)`);
   log(`Output directory: ${OUTPUT_DIR}`);
-  log(`Models: Opus=${MODELS.opus}, Sonnet=${MODELS.sonnet}`);
+  log(`Models: Opus=${resolveModel('opus')}, Sonnet=${resolveModel('sonnet')}`);
   if (setup.learnerNotes) log(`Notes: ${setup.learnerNotes}`);
   if (GEMINI_API_KEY) log('Gemini API key detected — infographics and TTS enabled');
 
@@ -788,7 +789,7 @@ async function main() {
     const syllabusText = await streamWithRetry(
       {
         apiKey: LLM_API_KEY,
-        model: MODELS.opus,
+        model: resolveModel('opus'),
         system: syllabusSystem,
         messages: [{ role: 'user', content: syllabusUser }],
         thinkingBudget: 'max',
@@ -884,7 +885,7 @@ async function main() {
       const chapterText = await streamWithRetry(
         {
           apiKey: LLM_API_KEY,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildChapterPrompt(setup.themeId, hasGemini),
           messages: [{
             role: 'user',

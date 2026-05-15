@@ -5,6 +5,7 @@ interface ApiState {
   claudeApiKey: string;
   geminiApiKey: string;
   llmBaseUrl: string;
+  customModelName: string;
   claudeKeyValid: boolean | null;
   geminiKeyValid: boolean | null;
   isValidatingClaude: boolean;
@@ -13,6 +14,7 @@ interface ApiState {
   setClaudeApiKey: (key: string) => void;
   setGeminiApiKey: (key: string) => void;
   setLlmBaseUrl: (url: string) => void;
+  setCustomModelName: (name: string) => void;
   setClaudeKeyValid: (valid: boolean | null) => void;
   setGeminiKeyValid: (valid: boolean | null) => void;
   setIsValidatingClaude: (v: boolean) => void;
@@ -25,6 +27,7 @@ export const useApiStore = create<ApiState>()(
       claudeApiKey: '',
       geminiApiKey: '',
       llmBaseUrl: 'https://ollama.com/v1',
+      customModelName: '',
       claudeKeyValid: null,
       geminiKeyValid: null,
       isValidatingClaude: false,
@@ -33,6 +36,7 @@ export const useApiStore = create<ApiState>()(
       setClaudeApiKey: (key) => set({ claudeApiKey: key, claudeKeyValid: null }),
       setGeminiApiKey: (key) => set({ geminiApiKey: key, geminiKeyValid: null }),
       setLlmBaseUrl: (url) => set({ llmBaseUrl: url }),
+      setCustomModelName: (name) => set({ customModelName: name }),
       setClaudeKeyValid: (valid) => set({ claudeKeyValid: valid }),
       setGeminiKeyValid: (valid) => set({ geminiKeyValid: valid }),
       setIsValidatingClaude: (v) => set({ isValidatingClaude: v }),
@@ -44,6 +48,7 @@ export const useApiStore = create<ApiState>()(
         claudeApiKey: state.claudeApiKey,
         geminiApiKey: state.geminiApiKey,
         llmBaseUrl: state.llmBaseUrl,
+        customModelName: state.customModelName,
       }),
     }
   )

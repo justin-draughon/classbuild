@@ -1,3 +1,4 @@
+import { extractJson, repairJson } from '../utils/jsonExtract';
 import type { CourseSetup, Syllabus, ChapterSyllabus, ScienceAnnotation, SciencePrinciple } from '../types/course';
 
 /** Normalize LLM-generated principle names to canonical keys */
@@ -195,26 +196,22 @@ export function parsePartialChapters(text: string): {
 
 export function parseSyllabusResponse(text: string): Syllabus | null {
   try {
-    // Strip markdown code fences if present
-    let jsonStr = text.trim();
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1];
-    }
+    let jsonStr = extractJson(text) || '';
+    if (!jsonStr) return null;
 
-    // Also strip any leading/trailing non-JSON text
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    let raw: Record<string, unknown>;
+    try {
+      raw = JSON.parse(jsonStr) as Record<string, unknown>;
+    } catch {
+      // Try to repair common LLM JSON mistakes and re-parse
+      const repaired = repairJson(jsonStr);
+      raw = JSON.parse(repaired) as Record<string, unknown>;
     }
-
-    const raw = JSON.parse(jsonStr);
 
     const syllabus: Syllabus = {
-      courseTitle: raw.courseTitle || 'Untitled Course',
-      courseOverview: raw.courseOverview || '',
-      chapters: (raw.chapters || []).map((ch: Record<string, unknown>, i: number): ChapterSyllabus => ({
+      courseTitle: (raw.courseTitle as string) || 'Untitled Course',
+      courseOverview: (raw.courseOverview as string) || '',
+      chapters: ((raw.chapters || []) as Array<Record<string, unknown>>).map((ch, i): ChapterSyllabus => ({
         number: (ch.number as number) || i + 1,
         title: (ch.title as string) || `Chapter ${i + 1}`,
         narrative: (ch.narrative as string) || '',

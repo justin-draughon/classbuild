@@ -1,3 +1,4 @@
+import { extractJson, repairJson } from '../utils/jsonExtract';
 import type { ResearchSource, ResearchDossier, SearchResult } from '../types/course';
 
 export const RESEARCH_SYSTEM_PROMPT = `You are a research assistant building a research dossier for a university course chapter. Your job is to find real, verifiable academic sources and synthesize them into a structured dossier.
@@ -62,18 +63,19 @@ Build a JSON dossier using the sources above. DO NOT hallucinate URLs or DOIs.`;
 
 export function parseResearchResponse(text: string, chapterNumber: number): ResearchDossier | null {
   try {
-    let jsonStr = text;
-    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (codeBlockMatch) jsonStr = codeBlockMatch[1];
+    let jsonStr = extractJson(text);
+    if (!jsonStr) return null;
 
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(jsonStr);
+    } catch {
+      raw = JSON.parse(repairJson(jsonStr));
+    }
 
-    const raw = JSON.parse(jsonStr);
     return {
       chapterNumber,
-      sources: (raw.sources || []).map((s: Record<string, unknown>): ResearchSource => ({
+      sources: (((raw as Record<string, unknown>).sources || []) as Record<string, unknown>[]).map((s): ResearchSource => ({
         title: (s.title as string) || '',
         authors: (s.authors as string) || '',
         year: (s.year as string) || '',
@@ -83,7 +85,7 @@ export function parseResearchResponse(text: string, chapterNumber: number): Rese
         relevance: (s.relevance as string) || '',
         isVerified: (s.isVerified as boolean) ?? false,
       })),
-      synthesisNotes: (raw.synthesisNotes as string) || '',
+      synthesisNotes: ((raw as Record<string, unknown>).synthesisNotes as string) || '',
     };
   } catch {
     return null;

@@ -4,13 +4,14 @@ import { useCourseStore } from '../store/courseStore';
 import { useApiStore } from '../store/apiStore';
 import { useUiStore } from '../store/uiStore';
 import { streamMessage } from '../services/claude/streaming';
-import { MODELS } from '../services/claude/client';
+import { resolveModel } from '../services/claude/client';
 import { buildChapterPrompt, buildChapterUserPrompt } from '../prompts/chapter';
 import { buildPracticeQuizPrompt, buildPracticeQuizUserPrompt } from '../prompts/practiceQuiz';
 import { buildInClassQuizPrompt, buildInClassQuizUserPrompt } from '../prompts/inClassQuiz';
 import { Button } from '../components/shared/Button';
 import type { InClassQuizQuestion } from '../types/course';
 import { friendlyError } from '../utils/errors';
+import { parseJson } from '../utils/format';
 
 function extractHtml(text: string): string {
   const htmlMatch = text.match(/```html\s*\n?([\s\S]*?)\n?```/);
@@ -341,7 +342,7 @@ export function ExportPage() {
       const fullText = await streamMessage(
         {
           apiKey: claudeApiKey,
-          model: MODELS.opus,
+          model: resolveModel('opus'),
           system: buildChapterPrompt(setup.themeId),
           messages: [{ role: 'user', content: buildChapterUserPrompt(syllabus.courseTitle, ch, setup.chapterLength, researchSources) }],
           thinkingBudget: 'high',
@@ -358,7 +359,7 @@ export function ExportPage() {
         const quizText = await streamMessage(
           {
             apiKey: claudeApiKey,
-            model: MODELS.opus,
+            model: resolveModel('opus'),
             system: buildPracticeQuizPrompt(),
             messages: [{ role: 'user', content: buildPracticeQuizUserPrompt(ch.title, ch.narrative, ch.keyConcepts, html.slice(0, 3000)) }],
             thinkingBudget: 'high',
@@ -374,7 +375,7 @@ export function ExportPage() {
         const inClassText = await streamMessage(
           {
             apiKey: claudeApiKey,
-            model: MODELS.opus,
+            model: resolveModel('opus'),
             system: buildInClassQuizPrompt(),
             messages: [{ role: 'user', content: buildInClassQuizUserPrompt(ch.title, ch.narrative, ch.keyConcepts, html.slice(0, 3000)) }],
             thinkingBudget: 'high',
@@ -383,32 +384,8 @@ export function ExportPage() {
           { onError: (err) => setError(err.message) }
         );
         try {
-          let jsonStr = inClassText;
-          const codeMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-          if (codeMatch) jsonStr = codeMatch[1];
-          const fb = jsonStr.indexOf('[');
-          const lb = jsonStr.lastIndexOf(']');
-          if (fb !== -1 && lb !== -1) jsonStr = jsonStr.slice(fb, lb + 1);
-          jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-          for (let attempt = 0; attempt < 10; attempt++) {
-            try {
-              const parsed = JSON.parse(jsonStr) as InClassQuizQuestion[];
-              updateChapter(chapterNum, { inClassQuizData: parsed });
-              break;
-            } catch (e) {
-              if (e instanceof SyntaxError) {
-                const posMatch = e.message.match(/position (\d+)/);
-                if (posMatch) {
-                  const pos = parseInt(posMatch[1]);
-                  if (pos > 0 && pos < jsonStr.length && jsonStr[pos] === '"') {
-                    jsonStr = jsonStr.slice(0, pos) + '\\"' + jsonStr.slice(pos + 1);
-                    continue;
-                  }
-                }
-              }
-              break;
-            }
-          }
+          const parsed = parseJson(inClassText) as InClassQuizQuestion[];
+          updateChapter(chapterNum, { inClassQuizData: parsed });
         } catch { /* parse failed */ }
       } catch { /* continue */ }
     } catch (err) {

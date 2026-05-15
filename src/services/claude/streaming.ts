@@ -1,7 +1,7 @@
 // OpenAI-compatible streaming client for Ollama Cloud (replaces Anthropic SDK)
 // Works with any OpenAI-compatible endpoint including Ollama Cloud, LiteLLM, etc.
 
-import { getBaseUrl, MODELS, type ThinkingBudget } from './client';
+import { getBaseUrl, resolveModel, type ThinkingBudget } from './client';
 
 export interface WebSearchResult {
   title: string;
@@ -77,7 +77,7 @@ export async function streamMessage(
 ): Promise<string> {
   const {
     apiKey,
-    model = MODELS.sonnet,
+    model = resolveModel('sonnet'),
     system,
     messages,
     maxTokens = 16000,
