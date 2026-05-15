@@ -19,11 +19,12 @@ export function ApiKeyPanel() {
     setIsValidatingClaude(true);
     try {
       getClient(claudeApiKey.trim(), llmBaseUrl);
-      const response = await fetch(`${llmBaseUrl}/chat/completions`, {
+      const response = await fetch('/api/proxy', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${claudeApiKey.trim()}`,
           'Content-Type': 'application/json',
+          'X-Target-Base-Url': llmBaseUrl,
         },
         body: JSON.stringify({
           model: MODELS.haiku,

@@ -134,6 +134,48 @@ function serveIndex(req, res) {
   });
 }
 
+// Proxy LLM requests to bypass browser CORS
+async function handleApiProxy(req, res) {
+  let body = '';
+  req.on('data', (chunk) => { body += chunk; });
+  req.on('end', async () => {
+    try {
+      const targetBase = req.headers['x-target-base-url'] || 'https://ollama.com/v1';
+      const url = `${targetBase}/chat/completions`;
+      const auth = req.headers['authorization'];
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(auth ? { 'Authorization': auth } : {}),
+        },
+        body,
+      });
+
+      // Forward status and headers (excluding encoding)
+      const headers = Object.fromEntries(
+        [...response.headers.entries()].filter(([k]) => !['content-encoding', 'transfer-encoding'].includes(k))
+      );
+      res.writeHead(response.status, headers);
+      // Stream body through
+      const reader = response.body?.getReader();
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      }
+      res.end();
+    } catch (err) {
+      console.error('Proxy error:', err.message);
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+}
+
 async function handleApiSearch(req, res) {
   let body = '';
   req.on('data', (chunk) => { body += chunk; });
@@ -165,7 +207,7 @@ function handleOptions(req, res) {
   res.writeHead(204, {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Target-Base-Url',
   });
   res.end();
 }
@@ -182,6 +224,10 @@ const server = http.createServer((req, res) => {
   // API routes
   if (url === '/api/search' && req.method === 'POST') {
     handleApiSearch(req, res);
+    return;
+  }
+  if (url === '/api/proxy' && req.method === 'POST') {
+    handleApiProxy(req, res);
     return;
   }
 

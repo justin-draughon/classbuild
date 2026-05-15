@@ -90,11 +90,12 @@ export async function streamMessage(
   let fullText = '';
 
   try {
-    const response = await fetch(`${getBaseUrl()}/chat/completions`, {
+    const response = await fetch('/api/proxy', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'X-Target-Base-Url': getBaseUrl(),
       },
       body: JSON.stringify({
         model,
