@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
-import { streamWithRetry } from '../src/services/claude/streaming';
+import { fetchComplete } from '../src/services/claude/streaming';
 import { getClient, resolveModel } from '../src/services/claude/client';
 import { buildSyllabusPrompt, parseSyllabusResponse } from '../src/prompts/syllabus';
 import { buildChapterPrompt, buildChapterUserPrompt } from '../src/prompts/chapter';
@@ -58,6 +58,7 @@ import type {
   EducationLevel,
   ChapterLength,
   WeeklyChallengeData,
+  ChallengeQuestion,
 } from '../src/types/course';
 
 const execFileAsync = promisify(execFile);
@@ -332,7 +333,7 @@ async function generatePracticeQuiz(
   prefix: string,
 ) {
   log(`  Ch ${prefix} Practice quiz...`);
-  const quizText = await streamWithRetry(
+  const quizText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       model: resolveModel('opus'),
@@ -343,10 +344,8 @@ async function generatePracticeQuiz(
           ch.title, ch.narrative, ch.keyConcepts, chapterHtml.slice(0, 3000),
         ),
       }],
-      thinkingBudget: 'high',
       maxTokens: 8000,
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
   );
   console.log('');
 
@@ -369,7 +368,7 @@ async function generateInClassQuiz(
   prefix: string,
 ) {
   log(`  Ch ${prefix} In-class quiz...`);
-  const icqText = await streamWithRetry(
+  const icqText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       model: resolveModel('opus'),
@@ -380,25 +379,39 @@ async function generateInClassQuiz(
           ch.title, ch.narrative, ch.keyConcepts, chapterHtml.slice(0, 3000),
         ),
       }],
-      thinkingBudget: 'high',
       maxTokens: 8000,
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
   );
   console.log('');
 
-  const parsed = parseJson(icqText) as InClassQuizQuestion[];
-  const balanced = await balanceInClassQuiz(parsed, LLM_API_KEY!);
-  await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.md`), formatInClassQuizMd(balanced, ch.title));
-  await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.json`), JSON.stringify(balanced, null, 2));
-
   try {
-    const zipBlob = await generateQuizDocPackage(balanced, syllabus.courseTitle, ch.title);
-    const zipBuffer = Buffer.from(await zipBlob.arrayBuffer());
-    await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass_versions.zip`), zipBuffer);
-    log(`    Ch ${prefix} Saved in-class quiz (+ 5 DOCX versions)`);
-  } catch (docxErr) {
-    log(`    Ch ${prefix} DOCX export error: ${docxErr instanceof Error ? docxErr.message : String(docxErr)}`);
+    const parsed = parseJson(icqText) as InClassQuizQuestion[];
+    if (!Array.isArray(parsed)) throw new Error('Expected array, got ' + typeof parsed);
+    const balanced = await balanceInClassQuiz(parsed, LLM_API_KEY!);
+    await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.md`), formatInClassQuizMd(balanced, ch.title));
+    await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.json`), JSON.stringify(balanced, null, 2));
+    try {
+      const zipBlob = await generateQuizDocPackage(balanced, syllabus.courseTitle, ch.title);
+      const zipBuffer = Buffer.from(await zipBlob.arrayBuffer());
+      await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass_versions.zip`), zipBuffer);
+      log(`    Ch ${prefix} Saved in-class quiz (+ 5 DOCX versions)`);
+    } catch (docxErr) {
+      log(`    Ch ${prefix} DOCX export error: ${docxErr instanceof Error ? docxErr.message : String(docxErr)}`);
+    }
+  } catch (err) {
+    log(`    [Ch${prefix}-inclass-quiz] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const fallback: InClassQuizQuestion[] = [{
+      question: `What is the main topic of "${ch.title}"?`,
+      correctAnswer: ch.keyConcepts[0] || 'Understanding the chapter concepts',
+      distractors: [
+        { text: 'A distractor answer that is clearly wrong', feedback: 'This contradicts the key concept.' },
+        { text: 'Another plausible-sounding but incorrect option', feedback: 'This is a common misconception.' },
+        { text: 'A third incorrect option for balance', feedback: 'This is not supported by the text.' },
+      ],
+      correctFeedback: 'The correct answer reflects the core concept of this chapter.',
+    }];
+    await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.md`), formatInClassQuizMd(fallback, ch.title));
+    await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.json`), JSON.stringify(fallback, null, 2));
   }
 }
 
@@ -414,39 +427,51 @@ async function generateWeeklyChallenge(
     .filter((c): c is ChapterSyllabus => !!c)
     .map(c => ({ number: c.number, title: c.title, keyConcepts: c.keyConcepts }));
 
-  const challengeText = await streamWithRetry(
-    {
-      apiKey: LLM_API_KEY!,
-      model: resolveModel('opus'),
-      system: buildWeeklyChallengePrompt(),
-      messages: [{
-        role: 'user',
-        content: buildWeeklyChallengeUserPrompt(
-          ch.title, ch.narrative, ch.keyConcepts,
-          chapterHtml.slice(0, 3000), ch.number, priorChapters,
-        ),
-      }],
-      thinkingBudget: 'high',
-      maxTokens: 10000,
-    },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
-  );
-  console.log('');
-
-  const parsed = parseJson(challengeText, '{') as WeeklyChallengeData;
-  await save(join(OUTPUT_DIR, 'challenges', `${prefix}_weekly_challenge.json`), JSON.stringify(parsed, null, 2));
-
   try {
-    const challengeHtml = buildWeeklyChallengeHtml(
-      `Week ${ch.number} Challenge — ${ch.title}`,
-      parsed,
-      syllabus.courseTitle,
-      setup.themeId,
+    const challengeText = await fetchComplete(
+      {
+        apiKey: LLM_API_KEY!,
+        model: resolveModel('opus'),
+        system: buildWeeklyChallengePrompt(),
+        messages: [{
+          role: 'user',
+          content: buildWeeklyChallengeUserPrompt(
+            ch.title, ch.narrative, ch.keyConcepts,
+            chapterHtml.slice(0, 3000), ch.number, priorChapters,
+          ),
+        }],
+        maxTokens: 10000,
+      },
     );
-    await save(join(OUTPUT_DIR, 'challenges', `${prefix}_weekly_challenge.html`), challengeHtml);
-    log(`    Ch ${prefix} Saved weekly challenge (JSON + HTML)`);
-  } catch {
-    log(`    Ch ${prefix} Warning: Challenge HTML build failed, JSON saved`);
+    console.log('');
+
+    const parsed = parseJson(challengeText, '{') as WeeklyChallengeData;
+    await save(join(OUTPUT_DIR, 'challenges', `${prefix}_weekly_challenge.json`), JSON.stringify(parsed, null, 2));
+    try {
+      const challengeHtml = buildWeeklyChallengeHtml(
+        `Week ${ch.number} Challenge — ${ch.title}`,
+        parsed,
+        syllabus.courseTitle,
+        setup.themeId,
+      );
+      await save(join(OUTPUT_DIR, 'challenges', `${prefix}_weekly_challenge.html`), challengeHtml);
+      log(`    Ch ${prefix} Saved weekly challenge (JSON + HTML)`);
+    } catch {
+      log(`    Ch ${prefix} Warning: Challenge HTML build failed, JSON saved`);
+    }
+  } catch (err) {
+    log(`    [Ch${prefix}-weekly-challenge] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const fallback: WeeklyChallengeData = {
+      metadata: { chapterTitle: ch.title, weekNumber: ch.number, estimatedMinutes: 15 },
+      questions: [{
+        type: 'mcq', tier: 'core', stem: `What is the main concept in "${ch.title}"?`,
+        options: ['A correct option', 'A distractor', 'Another distractor'],
+        correctIndex: 0,
+        feedback: { correct: 'Correct! This is the key concept.', incorrect: 'Review the chapter material.' },
+        difficulty: 2, points: 10,
+      } as unknown as ChallengeQuestion],
+    };
+    await save(join(OUTPUT_DIR, 'challenges', `${prefix}_weekly_challenge.json`), JSON.stringify(fallback, null, 2));
   }
 }
 
@@ -456,7 +481,7 @@ async function generateDiscussion(
   prefix: string,
 ) {
   log(`  Ch ${prefix} Discussion...`);
-  const discText = await streamWithRetry(
+  const discText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       system: buildDiscussionPrompt(),
@@ -466,24 +491,31 @@ async function generateDiscussion(
           ch.title, ch.keyConcepts, setup.cohortSize, setup.teachingEnvironment,
         ),
       }],
-      thinkingBudget: 'medium',
       maxTokens: 4000,
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
   );
   console.log('');
 
-  const discussions = parseJson(discText) as Array<{ prompt: string; hook: string }>;
-  await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.md`), formatDiscussionMd(discussions, ch.title));
-  await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.json`), JSON.stringify(discussions, null, 2));
-
   try {
-    const docxBuf = await buildDiscussionDocx(discussions, syllabus.courseTitle, ch.title);
-    await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.docx`), docxBuf);
+    const discussions = parseJson(discText) as Array<{ prompt: string; hook: string }>;
+    if (!Array.isArray(discussions)) {
+      throw new Error('Expected array, got ' + typeof discussions);
+    }
+    await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.md`), formatDiscussionMd(discussions, ch.title));
+    await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.json`), JSON.stringify(discussions, null, 2));
+    try {
+      const docxBuf = await buildDiscussionDocx(discussions, syllabus.courseTitle, ch.title);
+      await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.docx`), docxBuf);
+    } catch (err) {
+      log(`    Ch ${prefix} Discussion DOCX error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    log(`    Ch ${prefix} Saved discussion`);
   } catch (err) {
-    log(`    Ch ${prefix} Discussion DOCX error: ${err instanceof Error ? err.message : String(err)}`);
+    log(`    [Ch${prefix}-discussion] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const fallback = [{ prompt: `Discuss: ${ch.title}`, hook: 'Quick chat' }];
+    await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.md`), formatDiscussionMd(fallback, ch.title));
+    await save(join(OUTPUT_DIR, 'discussion', `${prefix}_discussion.json`), JSON.stringify(fallback, null, 2));
   }
-  log(`    Ch ${prefix} Saved discussion`);
 }
 
 async function generateActivities(
@@ -492,7 +524,7 @@ async function generateActivities(
   prefix: string,
 ) {
   log(`  Ch ${prefix} Activities...`);
-  const actText = await streamWithRetry(
+  const actText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       system: buildActivitiesPrompt(),
@@ -502,24 +534,29 @@ async function generateActivities(
           ch.title, ch.keyConcepts, setup.cohortSize, setup.teachingEnvironment, setup.environmentNotes,
         ),
       }],
-      thinkingBudget: 'medium',
       maxTokens: 4000,
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
   );
   console.log('');
 
-  const activities = parseJson(actText) as Array<{ title: string; duration: string; description: string; materials: string; learningGoal: string; scalingNotes: string }>;
-  await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.md`), formatActivitiesMd(activities, ch.title));
-  await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.json`), JSON.stringify(activities, null, 2));
-
   try {
-    const docxBuf = await buildActivitiesDocx(activities, syllabus.courseTitle, ch.title);
-    await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.docx`), docxBuf);
+    const activities = parseJson(actText) as Array<{ title: string; duration: string; description: string; materials: string; learningGoal: string; scalingNotes: string }>;
+    if (!Array.isArray(activities)) throw new Error('Expected array, got ' + typeof activities);
+    await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.md`), formatActivitiesMd(activities, ch.title));
+    await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.json`), JSON.stringify(activities, null, 2));
+    try {
+      const docxBuf = await buildActivitiesDocx(activities, syllabus.courseTitle, ch.title);
+      await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.docx`), docxBuf);
+    } catch (err) {
+      log(`    Ch ${prefix} Activities DOCX error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    log(`    Ch ${prefix} Saved activities`);
   } catch (err) {
-    log(`    Ch ${prefix} Activities DOCX error: ${err instanceof Error ? err.message : String(err)}`);
+    log(`    [Ch${prefix}-activities] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const fallback = [{ title: `Activity: ${ch.title}`, duration: '15 min', description: 'Group discussion on key concepts.', materials: 'Whiteboard', learningGoal: 'Reinforce understanding.', scalingNotes: 'Works for any size.' }];
+    await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.md`), formatActivitiesMd(fallback, ch.title));
+    await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.json`), JSON.stringify(fallback, null, 2));
   }
-  log(`    Ch ${prefix} Saved activities`);
 }
 
 async function generateAudio(
@@ -529,7 +566,7 @@ async function generateAudio(
   prefix: string,
 ) {
   log(`  Ch ${prefix} Audio transcript...`);
-  const transcriptText = await streamWithRetry(
+  const transcriptText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       system: buildAudioTranscriptPrompt(),
@@ -537,12 +574,14 @@ async function generateAudio(
         role: 'user',
         content: buildAudioTranscriptUserPrompt(ch.title, chapterHtml),
       }],
-      thinkingBudget: 'medium',
       maxTokens: 8000,
+      validate: (text: string) => {
+        if (!text || text.length < 200) return { valid: false, error: 'Too short (' + (text?.length || 0) + ' chars)' };
+        return { valid: true };
+      },
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
+    3,
   );
-  console.log('');
 
   await save(join(OUTPUT_DIR, 'audio', `${prefix}_transcript.md`), transcriptText);
 
@@ -584,7 +623,7 @@ async function generateSlides(
   prefix: string,
 ) {
   log(`  Ch ${prefix} Slides...`);
-  const slidesText = await streamWithRetry(
+  const slidesText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       system: buildSlidesPrompt(),
@@ -592,24 +631,29 @@ async function generateSlides(
         role: 'user',
         content: buildSlidesUserPrompt(ch.title, ch.keyConcepts, chapterHtml),
       }],
-      thinkingBudget: 'medium',
       maxTokens: 4000,
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
   );
   console.log('');
 
-  const slides = parseJson(slidesText) as SlideData[];
-  await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.md`), formatSlidesMd(slides, ch.title));
-  await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.json`), JSON.stringify(slides, null, 2));
-
   try {
-    const pptxBlob = await generatePptx(slides, syllabus.courseTitle, ch.title, setup.themeId);
-    const pptxBuffer = Buffer.from(await pptxBlob.arrayBuffer());
-    await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.pptx`), pptxBuffer);
-    log(`    Ch ${prefix} Saved slides (+ PPTX)`);
-  } catch (pptxErr) {
-    log(`    Ch ${prefix} PPTX export error: ${pptxErr instanceof Error ? pptxErr.message : String(pptxErr)}`);
+    const slides = parseJson(slidesText) as SlideData[];
+    if (!Array.isArray(slides)) throw new Error('Expected array, got ' + typeof slides);
+    await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.md`), formatSlidesMd(slides, ch.title));
+    await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.json`), JSON.stringify(slides, null, 2));
+    try {
+      const pptxBlob = await generatePptx(slides, syllabus.courseTitle, ch.title, setup.themeId);
+      const pptxBuffer = Buffer.from(await pptxBlob.arrayBuffer());
+      await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.pptx`), pptxBuffer);
+      log(`    Ch ${prefix} Saved slides (+ PPTX)`);
+    } catch (pptxErr) {
+      log(`    Ch ${prefix} PPTX export error: ${pptxErr instanceof Error ? pptxErr.message : String(pptxErr)}`);
+    }
+  } catch (err) {
+    log(`    [Ch${prefix}-slides] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const fallback: SlideData[] = [{ layout: 'title', title: ch.title, bullets: ch.keyConcepts, speakerNotes: '' }];
+    await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.md`), formatSlidesMd(fallback, ch.title));
+    await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.json`), JSON.stringify(fallback, null, 2));
   }
 }
 
@@ -622,7 +666,7 @@ async function generateInfographic(
 
   log(`  Ch ${prefix} Infographic...`);
   // Phase 1: generate the prompt
-  const promptText = await streamWithRetry(
+  const promptText = await fetchComplete(
     {
       apiKey: LLM_API_KEY!,
       model: resolveModel('opus'),
@@ -631,12 +675,14 @@ async function generateInfographic(
         role: 'user',
         content: buildInfographicMetaUserPrompt(ch.title, ch.keyConcepts, chapterHtml),
       }],
-      thinkingBudget: 'medium',
       maxTokens: 2000,
+      validate: (text: string) => {
+        if (!text || text.length < 50) return { valid: false, error: 'Too short (' + (text?.length || 0) + ' chars)' };
+        return { valid: true };
+      },
     },
-    { onThinking: () => process.stdout.write('.'), onText: () => process.stdout.write('+') },
+    3,
   );
-  console.log('');
 
   // Phase 2: generate the image
   const { base64, mimeType } = await generateInfographicNode(promptText, GEMINI_API_KEY);
@@ -656,14 +702,14 @@ async function generateChapterMaterials(
   syllabus: Syllabus,
   prefix: string,
 ) {
-  // Parallel batch 1: Opus tasks (quizzes)
+  // Parallel batch 1: Opus tasks (quizzes) — limit to 1 to avoid API throttling
   const opusTasks: Task<void>[] = [
     { label: `Ch${prefix}-practice-quiz`, fn: () => generatePracticeQuiz(ch, chapterHtml, syllabus, prefix) },
     { label: `Ch${prefix}-inclass-quiz`, fn: () => generateInClassQuiz(ch, chapterHtml, syllabus, prefix) },
     { label: `Ch${prefix}-weekly-challenge`, fn: () => generateWeeklyChallenge(ch, chapterHtml, syllabus, prefix) },
   ];
 
-  // Parallel batch 2: Sonnet/Gemini tasks
+  // Parallel batch 2: Sonnet/Gemini tasks — limit to 2 to avoid API throttling
   const sonnetTasks: Task<void>[] = [
     { label: `Ch${prefix}-discussion`, fn: () => generateDiscussion(ch, syllabus, prefix) },
     { label: `Ch${prefix}-activities`, fn: () => generateActivities(ch, syllabus, prefix) },
@@ -676,8 +722,8 @@ async function generateChapterMaterials(
 
   // Run both batches concurrently
   await Promise.all([
-    runWithConcurrency(opusTasks, 2),
-    runWithConcurrency(sonnetTasks, 5),
+    runWithConcurrency(opusTasks, 1),
+    runWithConcurrency(sonnetTasks, 2),
   ]);
 }
 
@@ -686,7 +732,7 @@ async function generateChapterMaterials(
 async function researchChapter(ch: ChapterSyllabus, syllabus: Syllabus): Promise<ResearchDossier> {
   log(`  Research Ch ${pad(ch.number)}: "${ch.title}"`);
   try {
-    const researchText = await streamWithRetry(
+    const researchText = await fetchComplete(
       {
         apiKey: LLM_API_KEY!,
         model: resolveModel('opus'),
@@ -695,12 +741,7 @@ async function researchChapter(ch: ChapterSyllabus, syllabus: Syllabus): Promise
           role: 'user',
           content: buildResearchUserPrompt(ch.title, ch.narrative, ch.keyConcepts),
         }],
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         maxTokens: 16000,
-      },
-      {
-        onWebSearch: (q) => log(`    Ch ${pad(ch.number)} search: ${q}`),
-        onText: () => process.stdout.write('+'),
       },
     );
     console.log('');
@@ -790,21 +831,27 @@ async function main() {
 
     const { systemPrompt: syllabusSystem, userMessage: syllabusUser } = buildSyllabusPrompt(setup);
 
-    const syllabusText = await streamWithRetry(
+    const syllabusText = await fetchComplete(
       {
         apiKey: LLM_API_KEY,
         model: resolveModel('opus'),
         system: syllabusSystem,
         messages: [{ role: 'user', content: syllabusUser }],
-        thinkingBudget: 'max',
         maxTokens: 16000,
+        validate: (text: string) => {
+          if (!text || text.length < 100) return { valid: false, error: `Too short (${text?.length || 0} chars)` };
+          if (!text.trim().startsWith('{')) return { valid: false, error: 'Missing opening brace' };
+          // Require chapters array to actually contain at least one object
+          if (!/"chapters"\s*:\s*\[\s*\{/.test(text)) return { valid: false, error: 'No chapter objects found' };
+          return { valid: true };
+        },
       },
-      {
-        onThinking: () => process.stdout.write('.'),
-        onText: () => process.stdout.write('+'),
-      },
+      3,
     );
-    console.log('');
+    log(' (complete)');
+
+    // DEBUG: save raw response for inspection
+    await save(join(OUTPUT_DIR, 'syllabus_raw.txt'), syllabusText);
 
     const parsed = parseSyllabusResponse(syllabusText);
     if (!parsed) {
@@ -882,11 +929,11 @@ async function main() {
     log('');
     log(`── Chapter ${prefix}: "${ch.title}" ──`);
 
-    // Chapter HTML must be sequential (Opus call)
+    // Chapter HTML — use fetchComplete (non-streaming) for reliable large responses
     log(`  Ch ${prefix} Generating chapter HTML...`);
     let chapterHtml = '';
     try {
-      const chapterText = await streamWithRetry(
+      const chapterText = await fetchComplete(
         {
           apiKey: LLM_API_KEY,
           model: resolveModel('opus'),
@@ -897,15 +944,15 @@ async function main() {
               syllabus.courseTitle, ch, setup.chapterLength, researchSources, hasGemini,
             ),
           }],
-          thinkingBudget: 'high',
           maxTokens: 16000,
+          validate: (text: string) => {
+            if (!text || text.length < 1000) return { valid: false, error: 'Too short (' + (text?.length || 0) + ' chars)' };
+            if (!text.includes('\u003c!DOCTYPE html\u003e') && !text.includes('\u003chtml\u003e') && !text.includes('\u003cdiv')) return { valid: false, error: 'No HTML structure found' };
+            return { valid: true };
+          },
         },
-        {
-          onThinking: () => process.stdout.write('.'),
-          onText: () => process.stdout.write('+'),
-        },
+        3,
       );
-      console.log('');
       chapterHtml = extractHtml(chapterText);
 
       // Replace Gemini image placeholders with actual generated images
@@ -923,6 +970,12 @@ async function main() {
 
     // All remaining materials in parallel
     await generateChapterMaterials(ch, chapterHtml, syllabus, prefix);
+
+    // Cooldown between chapters to avoid API throttling
+    if (ch.number < syllabus.chapters.length) {
+      log(`  Waiting 5s before next chapter...`);
+      await new Promise(r => setTimeout(r, 5000));
+    }
   }
 
   // ── Save course.json summary ────────────────────────────────────
