@@ -25,7 +25,7 @@ import { parseArgs, promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
 import { streamWithRetry } from '../src/services/claude/streaming';
-import { resolveModel } from '../src/services/claude/client';
+import { getClient, resolveModel } from '../src/services/claude/client';
 import { buildSyllabusPrompt, parseSyllabusResponse } from '../src/prompts/syllabus';
 import { buildChapterPrompt, buildChapterUserPrompt } from '../src/prompts/chapter';
 import { replaceGeminiImagePlaceholdersNode } from './lib/node-image-placer';
@@ -103,6 +103,10 @@ if (!LLM_API_KEY) {
   console.error('Error: LLM_API_KEY (or ANTHROPIC_API_KEY) environment variable is required');
   process.exit(1);
 }
+
+// Init Ollama Cloud client — use kimi-k2.6 which correctly follows JSON schemas
+// when instructed. deepseek-v4-pro was found to drift schema with complex prompts.
+getClient(LLM_API_KEY, 'https://ollama.com/v1', 'kimi-k2.6');
 
 const OUTPUT_DIR = values.output!;
 

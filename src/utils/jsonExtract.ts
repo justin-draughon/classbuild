@@ -23,33 +23,68 @@ export function extractJson(text: string): string | null {
     json = fenceMatch[1].trim();
   }
 
-  // Find first structural character: { or [
-  const firstBrace = json.indexOf('{');
-  const firstBracket = json.indexOf('[');
+  // Try every top-level { position — reasoning text may contain its own braces
+  // before the actual JSON payload, so the first { isn't always the right one.
+  const candidates: string[] = [];
+  let i = 0;
+  while (i < json.length) {
+    const braceIdx = json.indexOf('{', i);
+    if (braceIdx === -1) break;
 
-  // Determine whether we are extracting an object or an array
-  let startIdx: number;
-  let isArray: boolean;
-
-  if (firstBrace === -1 && firstBracket === -1) return null;
-  if (firstBrace === -1 || (firstBracket !== -1 && firstBracket < firstBrace)) {
-    startIdx = firstBracket;
-    isArray = true;
-  } else {
-    startIdx = firstBrace;
-    isArray = false;
+    const candidate = _extractBalanced(json, braceIdx, '{', '}');
+    if (candidate) {
+      candidates.push(candidate);
+      i = braceIdx + candidate.length;
+    } else {
+      i = braceIdx + 1;
+    }
   }
 
-  const openChar = isArray ? '[' : '{';
-  const closeChar = isArray ? ']' : '}';
+  // Also try arrays
+  i = 0;
+  while (i < json.length) {
+    const bracketIdx = json.indexOf('[', i);
+    if (bracketIdx === -1) break;
 
+    const candidate = _extractBalanced(json, bracketIdx, '[', ']');
+    if (candidate) {
+      candidates.push(candidate);
+      i = bracketIdx + candidate.length;
+    } else {
+      i = bracketIdx + 1;
+    }
+  }
+
+  // Try each candidate: prefer the one that parses as valid JSON
+  for (const c of candidates) {
+    const cleaned = c.replace(/,?\s*([}\]])/g, '$1');
+    try {
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch {
+      // try repair
+      try {
+        const repaired = repairJson(cleaned);
+        JSON.parse(repaired);
+        return repaired;
+      } catch {
+        // keep trying other candidates
+      }
+    }
+  }
+
+  // No candidate parsed — return the first one raw so callers can attempt repair
+  return candidates[0] || null;
+}
+
+/** Walk from startIdx and find the matching closeChar, respecting strings. */
+function _extractBalanced(text: string, startIdx: number, openChar: '{' | '[', closeChar: '}' | ']'): string | null {
   let depth = 0;
-  let endIdx = -1;
   let inString = false;
   let escapeNext = false;
 
-  for (let i = startIdx; i < json.length; i++) {
-    const ch = json[i];
+  for (let i = startIdx; i < text.length; i++) {
+    const ch = text[i];
 
     if (inString) {
       if (escapeNext) {
@@ -76,20 +111,13 @@ export function extractJson(text: string): string | null {
     } else if (ch === closeChar) {
       depth--;
       if (depth === 0) {
-        endIdx = i;
-        break;
+        const raw = text.slice(startIdx, i + 1);
+        return raw.replace(/,?\s*([}\]])/g, '$1');
       }
     }
   }
 
-  if (endIdx === -1) return null;
-
-  json = json.slice(startIdx, endIdx + 1);
-
-  // Strategy 3: strip trailing commas before } or ]
-  json = json.replace(/,?\s*([}\]])/g, '$1');
-
-  return json;
+  return null;
 }
 
 /**

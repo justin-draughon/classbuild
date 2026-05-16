@@ -88,20 +88,38 @@ export async function streamMessage(
     : messages.map(m => ({ role: m.role, content: m.content }));
 
   let fullText = '';
+  let hasSeenContent = false;  // once we see real content, ignore reasoning text
+
+  // Detect CLI (Node) vs browser and use direct API calls in Node
+  const isNode = typeof window === 'undefined' || typeof globalThis.fetch !== 'function';
+  const baseUrl = getBaseUrl();
 
   try {
-    const response = await fetch('/api/proxy', {
+    let url: string;
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    };
+
+    if (isNode) {
+      url = `${baseUrl}/chat/completions`;
+    } else {
+      url = '/api/proxy';
+      headers['X-Target-Base-Url'] = baseUrl;
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'X-Target-Base-Url': getBaseUrl(),
-      },
+      headers,
       body: JSON.stringify({
         model,
         messages: openAiMessages,
         max_tokens: maxTokens,
         stream: true,
+        // Force structured JSON output when supported (kimi-k2.6, deepseek-v4-pro
+        // on Ollama Cloud). This prevents reasoning text from being mixed into the
+        // content field when the model is asked for JSON.
+        ...(isNode ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
 
@@ -126,6 +144,7 @@ export async function streamMessage(
 
         const text = delta.content as string | undefined;
         if (text) {
+          hasSeenContent = true;
           fullText += text;
           callbacks.onText?.(text);
         }
@@ -133,8 +152,11 @@ export async function streamMessage(
         const reasoning = (delta.reasoning as string | undefined) || (delta.reasoning_content as string | undefined);
         if (reasoning) {
           callbacks.onThinking?.(reasoning);
-          // kimi-k2.6 sends output in reasoning, not content — treat it as text too
-          if (!text) {
+          // When response_format is used (CLI / Node), reasoning and content are
+          // cleanly separated — reasoning goes ONLY to onThinking, never to fullText.
+          // When streaming without response_format (browser), fall back to treating
+          // reasoning as content for models like kimi-k2.6 that emit output there.
+          if (!hasSeenContent && !isNode) {
             fullText += reasoning;
             callbacks.onText?.(reasoning);
           }
