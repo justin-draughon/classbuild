@@ -41,9 +41,9 @@ export function buildResearchUserPrompt(
   chapterTitle: string,
   chapterNarrative: string,
   keyConcepts: string[],
-  searchResults: SearchResult[]
+  searchResults?: SearchResult[]
 ): string {
-  const searchBlock = searchResults.length === 0
+  const searchBlock = !searchResults || searchResults.length === 0
     ? 'No web search results were found. Please work from your training knowledge and clearly note which sources cannot be verified.'
     : searchResults.map((r, i) =>
         `[${i + 1}] ${r.title}\nURL: ${r.url}\nSnippet: ${r.snippet}`
@@ -63,7 +63,14 @@ Build a JSON dossier using the sources above. DO NOT hallucinate URLs or DOIs.`;
 
 export function parseResearchResponse(text: string, chapterNumber: number): ResearchDossier | null {
   try {
-    let jsonStr = extractJson(text);
+    let jsonStr = extractJson(text, {
+      minLength: 100,
+      validate: (obj: unknown) => {
+        if (!obj || typeof obj !== 'object') return false;
+        const sources = (obj as Record<string, unknown>).sources;
+        return Array.isArray(sources) && sources.length > 0;
+      },
+    });
     if (!jsonStr) return null;
 
     let raw: unknown;

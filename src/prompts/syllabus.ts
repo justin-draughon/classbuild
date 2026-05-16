@@ -196,7 +196,16 @@ export function parsePartialChapters(text: string): {
 
 export function parseSyllabusResponse(text: string): Syllabus | null {
   try {
-    let jsonStr = extractJson(text) || '';
+    // Use a validator that rejects degenerate JSON with empty chapters
+    let jsonStr = extractJson(text, {
+      minLength: 500,
+      validate: (obj: unknown) => {
+        if (!obj || typeof obj !== 'object') return false;
+        const o = obj as Record<string, unknown>;
+        const chapters = o.chapters;
+        return Array.isArray(chapters) && chapters.length > 0;
+      },
+    }) || '';
     if (!jsonStr) return null;
 
     let raw: Record<string, unknown>;

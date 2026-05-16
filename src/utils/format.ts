@@ -49,7 +49,15 @@ export function parseJson(text: string, _wrapType?: '[' | '{'): unknown {
 
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
-      return JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
+      // Unwrap common LLM wrappers: { "questions": [...] } → [...]
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const keys = Object.keys(parsed);
+        if (keys.length === 1 && Array.isArray(parsed[keys[0]])) {
+          return parsed[keys[0]];
+        }
+      }
+      return parsed;
     } catch (e) {
       if (e instanceof SyntaxError) {
         const posMatch = e.message.match(/position (\d+)/);

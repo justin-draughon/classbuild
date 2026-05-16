@@ -9,7 +9,7 @@
  * 4. Remove BOM.
  */
 
-export function extractJson(text: string): string | null {
+export function extractJson(text: string, opts?: { minLength?: number; validate?: (obj: unknown) => boolean }): string | null {
   let json = text.trim();
 
   // Remove UTF-8 BOM if present
@@ -23,9 +23,9 @@ export function extractJson(text: string): string | null {
     json = fenceMatch[1].trim();
   }
 
-  // Try every top-level { position — reasoning text may contain its own braces
-  // before the actual JSON payload, so the first { isn't always the right one.
-  const candidates: string[] = [];
+  // Collect ALL valid candidates, then prefer the longest (most content)
+  const candidates: Array<{ text: string; len: number }> = [];
+
   let i = 0;
   while (i < json.length) {
     const braceIdx = json.indexOf('{', i);
@@ -33,14 +33,17 @@ export function extractJson(text: string): string | null {
 
     const candidate = _extractBalanced(json, braceIdx, '{', '}');
     if (candidate) {
-      candidates.push(candidate);
+      const cleaned = _cleanJson(candidate);
+      const parsed = _tryParse(cleaned, opts?.validate);
+      if (parsed) {
+        candidates.push({ text: cleaned, len: cleaned.length });
+      }
       i = braceIdx + candidate.length;
     } else {
       i = braceIdx + 1;
     }
   }
 
-  // Also try arrays
   i = 0;
   while (i < json.length) {
     const bracketIdx = json.indexOf('[', i);
@@ -48,33 +51,56 @@ export function extractJson(text: string): string | null {
 
     const candidate = _extractBalanced(json, bracketIdx, '[', ']');
     if (candidate) {
-      candidates.push(candidate);
+      const cleaned = _cleanJson(candidate);
+      const parsed = _tryParse(cleaned, opts?.validate);
+      if (parsed) {
+        candidates.push({ text: cleaned, len: cleaned.length });
+      }
       i = bracketIdx + candidate.length;
     } else {
       i = bracketIdx + 1;
     }
   }
 
-  // Try each candidate: prefer the one that parses as valid JSON
-  for (const c of candidates) {
-    const cleaned = c.replace(/,?\s*([}\]])/g, '$1');
-    try {
-      JSON.parse(cleaned);
-      return cleaned;
-    } catch {
-      // try repair
-      try {
-        const repaired = repairJson(cleaned);
-        JSON.parse(repaired);
-        return repaired;
-      } catch {
-        // keep trying other candidates
-      }
-    }
+  // Prefer the longest valid candidate (avoids tiny degenerate JSON)
+  candidates.sort((a, b) => b.len - a.len);
+
+  if (opts?.minLength && candidates.length) {
+    const bigEnough = candidates.find(c => c.len >= opts.minLength!);
+    if (bigEnough) return bigEnough.text;
   }
 
-  // No candidate parsed — return the first one raw so callers can attempt repair
-  return candidates[0] || null;
+  if (candidates.length) return candidates[0].text;
+
+  // No valid candidate parsed — return the first raw candidate for repair fallback
+  const firstBrace = _extractBalanced(json, json.indexOf('{'), '{', '}');
+  if (firstBrace) return _cleanJson(firstBrace);
+  const firstBracket = _extractBalanced(json, json.indexOf('['), '[', ']');
+  if (firstBracket) return _cleanJson(firstBracket);
+  return null;
+}
+
+/** Clean trailing commas and whitespace. */
+function _cleanJson(s: string): string {
+  return s.replace(/,?\s*([}\]])/g, '$1');
+}
+
+/** Try to parse; optionally run a validator. Returns true if valid. */
+function _tryParse(text: string, validate?: (obj: unknown) => boolean): boolean {
+  try {
+    const obj = JSON.parse(text);
+    if (validate && !validate(obj)) return false;
+    return true;
+  } catch {
+    try {
+      const repaired = repairJson(text);
+      const obj = JSON.parse(repaired);
+      if (validate && !validate(obj)) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 /** Walk from startIdx and find the matching closeChar, respecting strings. */
