@@ -1,4 +1,4 @@
-// Ollama Cloud OpenAI-compatible API client (replaces Anthropic SDK)
+// OpenAI-compatible API client configuration.
 
 const API_BASE = 'https://ollama.com/v1';
 
@@ -17,7 +17,7 @@ export function getApiKey(): string {
 }
 
 export function getBaseUrl(): string {
-  if (currentBaseUrl && currentBaseUrl !== API_BASE) return currentBaseUrl;
+  if (currentBaseUrl && currentBaseUrl !== API_BASE) return normalizeOpenAiBaseUrl(currentBaseUrl);
   // Fallback: read from persisted apiStore localStorage
   try {
     const raw = localStorage.getItem('classbuild-api-keys');
@@ -25,10 +25,10 @@ export function getBaseUrl(): string {
       const parsed = JSON.parse(raw);
       const state = parsed.state ?? parsed;
       const url = state.llmBaseUrl;
-      if (typeof url === 'string' && url.trim()) return url.trim();
+      if (typeof url === 'string' && url.trim()) return normalizeOpenAiBaseUrl(url);
     }
   } catch { /* ignore */ }
-  return currentBaseUrl || API_BASE;
+  return normalizeOpenAiBaseUrl(currentBaseUrl || API_BASE);
 }
 
 export function getCustomModel(): string {
@@ -40,6 +40,13 @@ export const MODELS = {
   sonnet: 'kimi-k2.6',
   haiku: 'kimi-k2.6',
 } as const;
+
+export function normalizeOpenAiBaseUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim().replace(/\/+$/, '');
+  if (!trimmed) return API_BASE;
+  if (trimmed.endsWith('/v1')) return trimmed;
+  return `${trimmed}/v1`;
+}
 
 export function resolveModel(fallback: keyof typeof MODELS = 'sonnet'): string {
   if (customModel) return customModel;

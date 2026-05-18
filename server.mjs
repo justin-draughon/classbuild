@@ -140,7 +140,7 @@ async function handleApiProxy(req, res) {
   req.on('data', (chunk) => { body += chunk; });
   req.on('end', async () => {
     try {
-      const targetBase = req.headers['x-target-base-url'] || 'https://ollama.com/v1';
+      const targetBase = normalizeOpenAiBaseUrl(String(req.headers['x-target-base-url'] || 'https://ollama.com/v1'));
       const url = `${targetBase}/chat/completions`;
       const auth = req.headers['authorization'];
 
@@ -174,6 +174,13 @@ async function handleApiProxy(req, res) {
       res.end(JSON.stringify({ error: err.message }));
     }
   });
+}
+
+function normalizeOpenAiBaseUrl(rawUrl) {
+  const trimmed = String(rawUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return 'https://ollama.com/v1';
+  if (trimmed.endsWith('/v1')) return trimmed;
+  return `${trimmed}/v1`;
 }
 
 async function handleApiSearch(req, res) {

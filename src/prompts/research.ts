@@ -63,7 +63,7 @@ Build a JSON dossier using the sources above. DO NOT hallucinate URLs or DOIs.`;
 
 export function parseResearchResponse(text: string, chapterNumber: number): ResearchDossier | null {
   try {
-    let jsonStr = extractJson(text, {
+    const jsonStr = extractJson(text, {
       minLength: 100,
       validate: (obj: unknown) => {
         if (!obj || typeof obj !== 'object') return false;

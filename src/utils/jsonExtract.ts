@@ -165,6 +165,7 @@ export function repairJson(text: string): string {
   if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
 
   // 2. Remove illegal control chars except whitespace
+  // eslint-disable-next-line no-control-regex
   s = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
 
   // 3. Remove C-style comments

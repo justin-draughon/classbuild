@@ -530,7 +530,7 @@ export function BuildPage() {
       );
 
       try {
-        const parsed = parseJson(fullText) as InClassQuizQuestion[];
+        const parsed = parseJson(fullText, '[') as InClassQuizQuestion[];
         const { balanceInClassQuiz } = await import('../services/quiz/answerBalancer');
         const balanced = await balanceInClassQuiz(parsed, claudeApiKey);
         if (selectedChapterRef.current === capturedChapter) setInClassQuizData(balanced);
@@ -631,7 +631,7 @@ export function BuildPage() {
       );
 
       try {
-        const parsed = parseJson(fullText) as DiscussionPrompt[];
+        const parsed = parseJson(fullText, '[') as DiscussionPrompt[];
         if (selectedChapterRef.current === capturedChapter) setDiscussions(parsed);
         updateChapter(capturedChapter, { discussionData: parsed });
       } catch {
@@ -666,7 +666,7 @@ export function BuildPage() {
       );
 
       try {
-        const parsed = parseJson(fullText) as Activity[];
+        const parsed = parseJson(fullText, '[') as Activity[];
         if (selectedChapterRef.current === capturedChapter) setActivities(parsed);
         updateChapter(capturedChapter, { activityData: parsed });
       } catch {
@@ -825,7 +825,7 @@ export function BuildPage() {
       );
 
       try {
-        const parsed = parseJson(fullText) as SlideData[];
+        const parsed = parseJson(fullText, '[') as SlideData[];
         if (selectedChapterRef.current === capturedChapter) setSlidesData(parsed);
         updateChapter(capturedChapter, { slidesJson: parsed });
       } catch {
@@ -989,7 +989,7 @@ export function BuildPage() {
             { onError: (err) => setError(err.message) }
           );
           try {
-            const parsed = parseJson(inClassText) as InClassQuizQuestion[];
+            const parsed = parseJson(inClassText, '[') as InClassQuizQuestion[];
             const { balanceInClassQuiz } = await import('../services/quiz/answerBalancer');
             const balanced = await balanceInClassQuiz(parsed, claudeApiKey);
             if (balanced) updateChapter(ch.number, { inClassQuizData: balanced });
@@ -1157,7 +1157,7 @@ export function BuildPage() {
             { onError: (err) => setError(err.message) }
           );
           try {
-            const parsed = parseJson(inClassText) as InClassQuizQuestion[];
+            const parsed = parseJson(inClassText, '[') as InClassQuizQuestion[];
             const { balanceInClassQuiz } = await import('../services/quiz/answerBalancer');
             const balanced = await balanceInClassQuiz(parsed, claudeApiKey);
             if (balanced) updateChapter(ch.number, { inClassQuizData: balanced });
@@ -1230,7 +1230,7 @@ export function BuildPage() {
               },
               {}
             );
-            const parsed = parseJson(fullText) as DiscussionPrompt[];
+            const parsed = parseJson(fullText, '[') as DiscussionPrompt[];
             updateChapter(ch.number, { discussionData: parsed });
           } catch { /* continue */ }
         })());
@@ -1253,7 +1253,7 @@ export function BuildPage() {
               },
               {}
             );
-            const parsed = parseJson(fullText) as Activity[];
+            const parsed = parseJson(fullText, '[') as Activity[];
             updateChapter(ch.number, { activityData: parsed });
           } catch { /* continue */ }
         })());
@@ -1310,7 +1310,7 @@ export function BuildPage() {
               },
               {}
             );
-            const parsed = parseJson(fullText) as SlideData[];
+            const parsed = parseJson(fullText, '[') as SlideData[];
             updateChapter(ch.number, { slidesJson: parsed });
           } catch { /* continue */ }
         })());

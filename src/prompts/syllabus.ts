@@ -17,6 +17,7 @@ export function buildSyllabusPrompt(
   refinementFeedback?: string,
   _conversationHistory?: Array<{ role: string; content: string }>
 ): { systemPrompt: string; userMessage: string } {
+  void _conversationHistory;
   const wordCount = setup.chapterLength === 'concise' ? '2,000' : setup.chapterLength === 'standard' ? '4,000' : '6,000';
   const readTime = setup.chapterLength === 'concise' ? '10' : setup.chapterLength === 'standard' ? '20' : '30';
 
@@ -197,7 +198,7 @@ export function parsePartialChapters(text: string): {
 export function parseSyllabusResponse(text: string): Syllabus | null {
   try {
     // Use a validator that rejects degenerate JSON with empty chapters
-    let jsonStr = extractJson(text, {
+    const jsonStr = extractJson(text, {
       minLength: 500,
       validate: (obj: unknown) => {
         if (!obj || typeof obj !== 'object') return false;

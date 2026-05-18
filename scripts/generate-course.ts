@@ -96,18 +96,19 @@ if (!values.topic) {
   process.exit(1);
 }
 
-const LLM_API_KEY = process.env.LLM_API_KEY || process.env.ANTHROPIC_API_KEY;
-const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://api.ollama.com/v1';
+const LLM_API_KEY = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+const LLM_BASE_URL = process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || 'https://ollama.com/v1';
+const LLM_MODEL = process.env.LLM_MODEL || process.env.OPENAI_MODEL || 'kimi-k2.6';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!LLM_API_KEY) {
-  console.error('Error: LLM_API_KEY (or ANTHROPIC_API_KEY) environment variable is required');
+  console.error('Error: LLM_API_KEY (or OPENAI_API_KEY) environment variable is required');
   process.exit(1);
 }
 
-// Init Ollama Cloud client — use kimi-k2.6 which correctly follows JSON schemas
-// when instructed. deepseek-v4-pro was found to drift schema with complex prompts.
-getClient(LLM_API_KEY, 'https://ollama.com/v1', 'kimi-k2.6');
+// Init OpenAI-compatible client. Defaults target Ollama Cloud/kimi-k2.6.
+// LLM_BASE_URL and LLM_MODEL can point at any compatible /v1 endpoint.
+getClient(LLM_API_KEY, LLM_BASE_URL, LLM_MODEL);
 
 const OUTPUT_DIR = values.output!;
 
@@ -385,7 +386,7 @@ async function generateInClassQuiz(
   console.log('');
 
   try {
-    const parsed = parseJson(icqText) as InClassQuizQuestion[];
+    const parsed = parseJson(icqText, '[') as InClassQuizQuestion[];
     if (!Array.isArray(parsed)) throw new Error('Expected array, got ' + typeof parsed);
     const balanced = await balanceInClassQuiz(parsed, LLM_API_KEY!);
     await save(join(OUTPUT_DIR, 'quizzes', `${prefix}_inclass.md`), formatInClassQuizMd(balanced, ch.title));
@@ -497,7 +498,7 @@ async function generateDiscussion(
   console.log('');
 
   try {
-    const discussions = parseJson(discText) as Array<{ prompt: string; hook: string }>;
+    const discussions = parseJson(discText, '[') as Array<{ prompt: string; hook: string }>;
     if (!Array.isArray(discussions)) {
       throw new Error('Expected array, got ' + typeof discussions);
     }
@@ -540,7 +541,7 @@ async function generateActivities(
   console.log('');
 
   try {
-    const activities = parseJson(actText) as Array<{ title: string; duration: string; description: string; materials: string; learningGoal: string; scalingNotes: string }>;
+    const activities = parseJson(actText, '[') as Array<{ title: string; duration: string; description: string; materials: string; learningGoal: string; scalingNotes: string }>;
     if (!Array.isArray(activities)) throw new Error('Expected array, got ' + typeof activities);
     await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.md`), formatActivitiesMd(activities, ch.title));
     await save(join(OUTPUT_DIR, 'activities', `${prefix}_activities.json`), JSON.stringify(activities, null, 2));
@@ -637,7 +638,7 @@ async function generateSlides(
   console.log('');
 
   try {
-    const slides = parseJson(slidesText) as SlideData[];
+    const slides = parseJson(slidesText, '[') as SlideData[];
     if (!Array.isArray(slides)) throw new Error('Expected array, got ' + typeof slides);
     await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.md`), formatSlidesMd(slides, ch.title));
     await save(join(OUTPUT_DIR, 'slides', `${prefix}_slides.json`), JSON.stringify(slides, null, 2));

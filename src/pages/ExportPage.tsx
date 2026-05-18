@@ -384,7 +384,7 @@ export function ExportPage() {
           { onError: (err) => setError(err.message) }
         );
         try {
-          const parsed = parseJson(inClassText) as InClassQuizQuestion[];
+          const parsed = parseJson(inClassText, '[') as InClassQuizQuestion[];
           updateChapter(chapterNum, { inClassQuizData: parsed });
         } catch { /* parse failed */ }
       } catch { /* continue */ }

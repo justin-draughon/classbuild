@@ -1,7 +1,7 @@
 // OpenAI-compatible streaming client for Ollama Cloud (replaces Anthropic SDK)
 // Works with any OpenAI-compatible endpoint including Ollama Cloud, LiteLLM, etc.
 
-import { getBaseUrl, resolveModel, type ThinkingBudget } from './client';
+import { getBaseUrl, normalizeOpenAiBaseUrl, resolveModel, type ThinkingBudget } from './client';
 
 export interface WebSearchResult {
   title: string;
@@ -95,7 +95,7 @@ export async function streamMessage(
 
   // Detect CLI (Node) vs browser and use direct API calls in Node
   const isNode = typeof window === 'undefined' || typeof globalThis.fetch !== 'function';
-  const baseUrl = getBaseUrl();
+  const baseUrl = normalizeOpenAiBaseUrl(getBaseUrl());
 
   try {
     let url: string;
@@ -239,8 +239,7 @@ export async function fetchComplete(
     ? [{ role: 'system', content: system }, ...messages]
     : messages;
 
-  const baseUrl = getBaseUrl();
-  const url = baseUrl.endsWith('/v1') ? baseUrl : baseUrl + '/v1';
+  const url = normalizeOpenAiBaseUrl(getBaseUrl());
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -266,7 +265,7 @@ export async function fetchComplete(
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
-      const response = await globalThis.fetch(url + '/chat/completions', {
+      const response = await globalThis.fetch(`${url}/chat/completions`, {
         method: 'POST',
         headers,
         body,
@@ -275,13 +274,13 @@ export async function fetchComplete(
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Ollama Cloud API error ${response.status}: ${errText.slice(0, 200)}`);
+        throw new Error(`OpenAI-compatible API error ${response.status}: ${errText.slice(0, 200)}`);
       }
 
       const data = await response.json() as Record<string, unknown>;
       const msg = (data.choices as Array<Record<string, unknown>>)?.[0]?.message as Record<string, unknown> | undefined;
-      let content = String(msg?.content ?? '');
-      const reasoning = String(msg?.reasoning ?? msg?.reasoning_content ?? '');
+      let content = textFromContent(msg?.content);
+      const reasoning = textFromContent(msg?.reasoning ?? msg?.reasoning_content);
       // Fallback: if content is empty OR a tiny shell (< 500 chars) but reasoning
       // contains substantial structured output, use reasoning instead.
       const contentLen = content.trim().length;
@@ -345,4 +344,20 @@ export async function fetchComplete(
     }
   }
   throw lastErr ?? new Error('Max retries exceeded');
+}
+
+function textFromContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.map((part) => {
+      if (typeof part === 'string') return part;
+      if (part && typeof part === 'object') {
+        const record = part as Record<string, unknown>;
+        return textFromContent(record.text ?? record.content);
+      }
+      return '';
+    }).join('');
+  }
+  if (value == null) return '';
+  return String(value);
 }

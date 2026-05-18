@@ -75,17 +75,16 @@ React 19 · Vite 7 · TypeScript 5.9 · Tailwind CSS 4 · Zustand · Framer Moti
 - Research compilation per chapter
 - Audio transcripts (15K–35K chars per chapter)
 - Discussion starters
+- Activities, in-class quizzes, and slides now tolerate OpenAI-compatible wrapper objects such as `{ questions: [...] }`, `{ activities: [...] }`, and nested `{ data: { slides: [...] } }`
+- CLI now honors `LLM_API_KEY`/`OPENAI_API_KEY`, `LLM_BASE_URL`/`OPENAI_BASE_URL`, and `LLM_MODEL`/`OPENAI_MODEL`
 
 ### Partially Working
 - **Chapter HTML** — Ch01 and Ch05 generate correctly (~35K chars); Ch02–Ch04 intermittently return tiny widget shells due to API instability
 - **Practice Quizzes** — Most chapters succeed; some return empty payloads under API pressure
 
-### Not Working / Untested After Latest Fixes
-- PowerPoint slides — previously failed with "Empty or truncated content"
-- Activities — previously failed with "Expected array, got object"
-- In-class quizzes — same issue as activities
-- Weekly challenges — mostly empty in prior runs
-- Infographics — untested after switching to `fetchComplete`
+### Needs Live API Verification
+- Parser wrapper handling for activities, in-class quizzes, and slides is fixed; re-run those generators against the target provider to verify live output quality.
+- Weekly challenges and infographics still depend on live API availability and should be smoke-tested per provider/model.
 
 ### The Real Blocker
 **API rate limiting / throttling.** Ollama Cloud's kimi-k2.6 endpoint:
@@ -107,7 +106,7 @@ React 19 · Vite 7 · TypeScript 5.9 · Tailwind CSS 4 · Zustand · Framer Moti
 
 4. **Node.js stdout buffering** — When stdout is redirected to a file, log lines are slow to appear. Check the output directory directly for actual progress.
 
-5. **Pre-existing TypeScript errors** — `node_modules/docx`, `src/services/export/quizDocExporter.ts`, and `src/utils/doiValidator.ts` have lint errors that existed before our changes. Build still passes.
+5. **Lint warnings remain** — `npm run lint` has no errors, but still reports React hook dependency warnings in `BuildPage.tsx` and `ExportPage.tsx`. Build passes.
 
 ---
 
@@ -117,7 +116,7 @@ React 19 · Vite 7 · TypeScript 5.9 · Tailwind CSS 4 · Zustand · Framer Moti
 |------|-------------|
 | `src/utils/jsonExtract.ts` | `extractJson(text, opts?)` — the new parser with `minLength`/`validate` |
 | `src/services/claude/streaming.ts` | `fetchComplete()` — non-streaming client with reasoning fallback and retries |
-| `src/utils/format.ts` | `parseJson()` — auto-unwraps single-key wrappers, strips markdown fences |
+| `src/utils/format.ts` | `parseJson()` — auto-unwraps common array/object wrappers, strips markdown fences |
 | `src/prompts/syllabus.ts` | `parseSyllabusResponse()` — validates `chapters.length > 0` |
 | `src/prompts/research.ts` | `parseResearchResponse()` — validates `sources.length > 0` |
 | `scripts/generate-course.ts` | The CLI — now **100% non-streaming** |
@@ -130,7 +129,7 @@ React 19 · Vite 7 · TypeScript 5.9 · Tailwind CSS 4 · Zustand · Framer Moti
 1. **Start small** — `--chapters 5` (or even `--chapters 3`) to avoid API throttling
 2. **Monitor the API** — Run a quick `curl` test before kicking off the pipeline
 3. **Check output directly** — Look at `output/<run_dir>/` for real files, not just the log
-4. **Slides/Activities/Quizzes** — These still need attention. The "Expected array, got object" error suggests the response unwrapping works for some shapes but not others. Inspect the raw responses and add targeted `parseJson` handlers per generator.
+4. **Smoke-test live providers** — Run one small 2-3 chapter course through the chosen endpoint/model before scaling up.
 5. **Consider a different model** — If API rate limits persist, a model without reasoning/content split would restore streaming reliability and cut generation time by ~50%.
 
 ---
